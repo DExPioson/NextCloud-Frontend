@@ -6,6 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import Login from "@/pages/Login";
+import Dashboard from "@/pages/Dashboard";
+import Files from "@/pages/Files";
 
 // ─── Theme ──────────────────────────────────────────────────
 function useTheme() {
@@ -72,8 +74,8 @@ function AppShell() {
         <main className="flex-1 overflow-auto pt-14">
           <div key={location} className="h-full animate-fade-in">
             <Switch>
-              <Route path="/">{() => <StubPage title="Dashboard" />}</Route>
-              <Route path="/files">{() => <StubPage title="Files" />}</Route>
+              <Route path="/">{() => <Dashboard />}</Route>
+              <Route path="/files">{() => <Files />}</Route>
               <Route path="/talk">{() => <StubPage title="Talk" />}</Route>
               <Route path="/calendar">{() => <StubPage title="Calendar" />}</Route>
               <Route path="/notes">{() => <StubPage title="Notes" />}</Route>
