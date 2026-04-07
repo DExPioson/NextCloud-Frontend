@@ -95,9 +95,47 @@ app.delete("/api/files/:id", (req, res) => {
 });
 
 // Conversations
-app.get("/api/conversations", (_req, res) => res.json({ data: storage.getConversations() }));
+app.get("/api/conversations", (_req, res) => {
+  const convos = storage.getConversations();
+  convos.sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
+  res.json({ data: convos });
+});
+app.get("/api/conversations/:id", (req, res) => {
+  const conv = storage.getConversation(Number(req.params.id));
+  if (!conv) return res.status(404).json({ error: "Not found" });
+  res.json({ data: conv });
+});
+app.post("/api/conversations", (req, res) => {
+  const conv = storage.createConversation(req.body);
+  res.json({ data: conv });
+});
+app.patch("/api/conversations/:id/read", (req, res) => {
+  storage.updateConversation(Number(req.params.id), { unreadCount: 0 });
+  res.json({ data: { success: true } });
+});
+
+// Messages
 app.get("/api/conversations/:id/messages", (req, res) => {
-  res.json({ data: storage.getMessages(Number(req.params.id)) });
+  const msgs = storage.getMessages(Number(req.params.id));
+  msgs.sort((a, b) => a.sentAt.localeCompare(b.sentAt));
+  res.json({ data: msgs });
+});
+app.post("/api/conversations/:id/messages", (req, res) => {
+  const conversationId = Number(req.params.id);
+  const { content } = req.body;
+  const sentAt = new Date().toISOString();
+  const msg = storage.createMessage({
+    conversationId,
+    senderId: 1,
+    senderName: "Piyush Sharma",
+    content,
+    sentAt,
+  });
+  storage.updateConversation(conversationId, {
+    lastMessage: content,
+    lastMessageAt: sentAt,
+  });
+  res.json({ data: msg });
 });
 
 // Events

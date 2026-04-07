@@ -1,4 +1,5 @@
 import { useLocation, Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   FolderOpen,
@@ -15,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { CloudSpaceLogo } from "./CloudSpaceLogo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Conversation } from "@shared/schema";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
@@ -37,6 +39,15 @@ interface SidebarProps {
 export function Sidebar({ collapsed }: SidebarProps) {
   const [location] = useLocation();
 
+  const { data: convosData } = useQuery({
+    queryKey: ["/api/conversations"],
+    queryFn: async () => {
+      const res = await fetch("/api/conversations");
+      return res.json() as Promise<{ data: Conversation[] }>;
+    },
+  });
+  const totalUnread = (convosData?.data || []).reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+
   return (
     <aside
       className={cn(
@@ -58,6 +69,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
             const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
             const Icon = item.icon;
 
+            const showBadge = item.label === "Talk" && totalUnread > 0;
+
             const linkContent = (
               <Link
                 to={item.href}
@@ -70,13 +83,25 @@ export function Sidebar({ collapsed }: SidebarProps) {
                 )}
               >
                 <Icon className="h-5 w-5 shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
+                {!collapsed && (
+                  <>
+                    <span className="flex-1">{item.label}</span>
+                    {showBadge && (
+                      <span className="bg-primary text-white text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
+                        {totalUnread}
+                      </span>
+                    )}
+                  </>
+                )}
+                {collapsed && showBadge && (
+                  <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-primary rounded-full" />
+                )}
               </Link>
             );
 
             if (collapsed) {
               return (
-                <li key={item.href}>
+                <li key={item.href} className="relative">
                   <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
                     <TooltipContent side="right">{item.label}</TooltipContent>
@@ -85,7 +110,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
               );
             }
 
-            return <li key={item.href}>{linkContent}</li>;
+            return <li key={item.href} className="relative">{linkContent}</li>;
           })}
         </ul>
       </nav>

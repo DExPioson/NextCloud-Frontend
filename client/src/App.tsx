@@ -8,6 +8,7 @@ import { TopBar } from "@/components/layout/TopBar";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Files from "@/pages/Files";
+import Talk from "@/pages/Talk";
 
 // ─── Theme ──────────────────────────────────────────────────
 function useTheme() {
@@ -76,7 +77,7 @@ function AppShell() {
             <Switch>
               <Route path="/">{() => <Dashboard />}</Route>
               <Route path="/files">{() => <Files />}</Route>
-              <Route path="/talk">{() => <StubPage title="Talk" />}</Route>
+              <Route path="/talk">{() => <Talk />}</Route>
               <Route path="/calendar">{() => <StubPage title="Calendar" />}</Route>
               <Route path="/notes">{() => <StubPage title="Notes" />}</Route>
               <Route path="/contacts">{() => <StubPage title="Contacts" />}</Route>

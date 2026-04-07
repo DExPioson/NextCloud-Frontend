@@ -409,6 +409,8 @@ export interface IStorage {
   // Conversations
   getConversations(): Conversation[];
   getConversation(id: number): Conversation | undefined;
+  createConversation(conv: { name: string; type: string; members?: string }): Conversation;
+  updateConversation(id: number, data: Partial<Conversation>): Conversation | undefined;
   // Messages
   getMessages(conversationId: number): Message[];
   createMessage(msg: { conversationId: number; senderId: number; senderName: string; content: string; sentAt: string }): Message;
@@ -464,6 +466,13 @@ class DatabaseStorage implements IStorage {
 
   getConversations() { return db.select().from(conversations).all(); }
   getConversation(id: number) { return db.select().from(conversations).where(eq(conversations.id, id)).get(); }
+  createConversation(conv: { name: string; type: string; members?: string }) {
+    return db.insert(conversations).values(conv).returning().get();
+  }
+  updateConversation(id: number, data: Partial<Conversation>) {
+    db.update(conversations).set(data).where(eq(conversations.id, id)).run();
+    return this.getConversation(id);
+  }
 
   getMessages(conversationId: number) { return db.select().from(messages).where(eq(messages.conversationId, conversationId)).all(); }
   createMessage(msg: { conversationId: number; senderId: number; senderName: string; content: string; sentAt: string }) {
