@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { CloudSpaceLogo } from "./CloudSpaceLogo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Conversation } from "@shared/schema";
+import type { Conversation, Activity as ActivityType } from "@shared/schema";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
@@ -48,6 +48,26 @@ export function Sidebar({ collapsed }: SidebarProps) {
   });
   const totalUnread = (convosData?.data || []).reduce((sum, c) => sum + (c.unreadCount || 0), 0);
 
+  const { data: emailCountsData } = useQuery({
+    queryKey: ["/api/emails/counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/emails/counts");
+      return res.json() as Promise<{ data: { inbox: number; drafts: number; spam: number } }>;
+    },
+    staleTime: 30_000,
+  });
+  const mailUnread = emailCountsData?.data?.inbox ?? 0;
+
+  const { data: activityData } = useQuery({
+    queryKey: ["/api/activity", "all"],
+    queryFn: async () => {
+      const res = await fetch("/api/activity?limit=50&type=all");
+      return res.json() as Promise<{ data: ActivityType[] }>;
+    },
+    staleTime: 30_000,
+  });
+  const activityUnread = (activityData?.data || []).filter(a => !a.isRead).length;
+
   return (
     <aside
       className={cn(
@@ -69,7 +89,11 @@ export function Sidebar({ collapsed }: SidebarProps) {
             const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
             const Icon = item.icon;
 
-            const showBadge = item.label === "Talk" && totalUnread > 0;
+            const badgeCount =
+              item.label === "Talk" ? totalUnread :
+              item.label === "Mail" ? mailUnread :
+              item.label === "Activity" ? activityUnread : 0;
+            const showBadge = badgeCount > 0;
 
             const linkContent = (
               <Link
@@ -88,7 +112,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                     <span className="flex-1">{item.label}</span>
                     {showBadge && (
                       <span className="bg-primary text-white text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
-                        {totalUnread}
+                        {badgeCount}
                       </span>
                     )}
                   </>

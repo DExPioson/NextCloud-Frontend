@@ -13,6 +13,8 @@ import Calendar from "@/pages/Calendar";
 import Notes from "@/pages/Notes";
 import Contacts from "@/pages/Contacts";
 import Deck from "@/pages/Deck";
+import Mail from "@/pages/Mail";
+import Activity from "@/pages/Activity";
 
 // ─── Theme ──────────────────────────────────────────────────
 function useTheme() {
@@ -86,8 +88,8 @@ function AppShell() {
               <Route path="/notes">{() => <Notes />}</Route>
               <Route path="/contacts">{() => <Contacts />}</Route>
               <Route path="/deck">{() => <Deck />}</Route>
-              <Route path="/mail">{() => <StubPage title="Mail" />}</Route>
-              <Route path="/activity">{() => <StubPage title="Activity" />}</Route>
+              <Route path="/mail">{() => <Mail />}</Route>
+              <Route path="/activity">{() => <Activity />}</Route>
               <Route path="/media">{() => <StubPage title="Media" />}</Route>
               <Route path="/settings">{() => <StubPage title="Settings" />}</Route>
             </Switch>

@@ -255,17 +255,57 @@ app.delete("/api/cards/:id", (req, res) => {
   res.json({ data: { success: true } });
 });
 
-// Emails
+// Emails — counts MUST be before :id route
+app.get("/api/emails/counts", (_req, res) => {
+  res.json({ data: storage.getEmailCounts() });
+});
 app.get("/api/emails", (req, res) => {
   const folder = (req.query.folder as string) || "inbox";
-  res.json({ data: storage.getEmails(folder) });
+  const all = storage.getEmails(folder);
+  all.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+  res.json({ data: all });
+});
+app.get("/api/emails/:id", (req, res) => {
+  const email = storage.getEmail(Number(req.params.id));
+  if (!email) return res.status(404).json({ error: "Not found" });
+  // Mark as read on fetch
+  if (!email.isRead) {
+    storage.updateEmail(email.id, { isRead: true });
+  }
+  res.json({ data: storage.getEmail(email.id) });
+});
+app.post("/api/emails", (req, res) => {
+  const email = storage.createEmail(req.body);
+  res.json({ data: email });
+});
+app.patch("/api/emails/:id", (req, res) => {
+  const email = storage.updateEmail(Number(req.params.id), req.body);
+  if (!email) return res.status(404).json({ error: "Not found" });
+  res.json({ data: email });
+});
+app.delete("/api/emails/:id", (req, res) => {
+  storage.deleteEmail(Number(req.params.id));
+  res.json({ data: { success: true } });
 });
 
 // Activities
 app.get("/api/activity", (req, res) => {
-  const limit = Number(req.query.limit) || 20;
-  const all = storage.getActivities();
+  const limit = Number(req.query.limit) || 50;
+  const type = (req.query.type as string) || "all";
+  let all = storage.getActivities();
+  if (type && type !== "all") {
+    all = all.filter(a => a.type === type);
+  }
+  all.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   res.json({ data: all.slice(0, limit) });
+});
+app.patch("/api/activity/:id/read", (req, res) => {
+  storage.updateActivity(Number(req.params.id), { isRead: true });
+  res.json({ data: { success: true } });
+});
+app.post("/api/activity/read-all", (_req, res) => {
+  storage.markAllActivitiesRead();
+  res.json({ data: { success: true } });
 });
 app.get("/api/activities", (_req, res) => res.json({ data: storage.getActivities() }));
 

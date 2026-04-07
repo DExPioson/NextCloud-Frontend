@@ -448,8 +448,15 @@ export interface IStorage {
   // Emails
   getEmails(folder: string): Email[];
   getEmail(id: number): Email | undefined;
+  createEmail(email: { folder: string; from: string; fromEmail: string; to: string; subject: string; preview: string; body: string; receivedAt: string; isRead?: boolean; isStarred?: boolean; hasAttachment?: boolean }): Email;
+  updateEmail(id: number, data: Partial<Email>): Email | undefined;
+  deleteEmail(id: number): void;
+  getEmailCounts(): { inbox: number; drafts: number; spam: number };
   // Activities
   getActivities(): Activity[];
+  getActivity(id: number): Activity | undefined;
+  updateActivity(id: number, data: Partial<Activity>): Activity | undefined;
+  markAllActivitiesRead(): void;
 }
 
 // ─── Implementation ─────────────────────────────────────────
@@ -536,8 +543,32 @@ class DatabaseStorage implements IStorage {
 
   getEmails(folder: string) { return db.select().from(emails).where(eq(emails.folder, folder)).all(); }
   getEmail(id: number) { return db.select().from(emails).where(eq(emails.id, id)).get(); }
+  createEmail(email: { folder: string; from: string; fromEmail: string; to: string; subject: string; preview: string; body: string; receivedAt: string; isRead?: boolean; isStarred?: boolean; hasAttachment?: boolean }) {
+    return db.insert(emails).values(email).returning().get();
+  }
+  updateEmail(id: number, data: Partial<Email>) {
+    db.update(emails).set(data).where(eq(emails.id, id)).run();
+    return this.getEmail(id);
+  }
+  deleteEmail(id: number) { db.delete(emails).where(eq(emails.id, id)).run(); }
+  getEmailCounts() {
+    const allEmails = db.select().from(emails).all();
+    return {
+      inbox: allEmails.filter(e => e.folder === "inbox" && !e.isRead).length,
+      drafts: allEmails.filter(e => e.folder === "drafts").length,
+      spam: allEmails.filter(e => e.folder === "spam").length,
+    };
+  }
 
   getActivities() { return db.select().from(activities).all(); }
+  getActivity(id: number) { return db.select().from(activities).where(eq(activities.id, id)).get(); }
+  updateActivity(id: number, data: Partial<Activity>) {
+    db.update(activities).set(data).where(eq(activities.id, id)).run();
+    return this.getActivity(id);
+  }
+  markAllActivitiesRead() {
+    db.update(activities).set({ isRead: true }).run();
+  }
 }
 
 export const storage = new DatabaseStorage();
