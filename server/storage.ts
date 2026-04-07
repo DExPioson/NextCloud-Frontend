@@ -418,6 +418,7 @@ export interface IStorage {
   getEvents(): Event[];
   getEvent(id: number): Event | undefined;
   createEvent(event: { title: string; startAt: string; endAt: string; calendar?: string; color?: string; description?: string; allDay?: boolean; location?: string }): Event;
+  updateEvent(id: number, data: Partial<Event>): Event | undefined;
   deleteEvent(id: number): void;
   // Notes
   getNotes(): Note[];
@@ -483,6 +484,10 @@ class DatabaseStorage implements IStorage {
   getEvent(id: number) { return db.select().from(events).where(eq(events.id, id)).get(); }
   createEvent(event: { title: string; startAt: string; endAt: string; calendar?: string; color?: string; description?: string; allDay?: boolean; location?: string }) {
     return db.insert(events).values(event).returning().get();
+  }
+  updateEvent(id: number, data: Partial<Event>) {
+    db.update(events).set(data).where(eq(events.id, id)).run();
+    return this.getEvent(id);
   }
   deleteEvent(id: number) { db.delete(events).where(eq(events.id, id)).run(); }
 

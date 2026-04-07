@@ -140,9 +140,53 @@ app.post("/api/conversations/:id/messages", (req, res) => {
 
 // Events
 app.get("/api/events", (_req, res) => res.json({ data: storage.getEvents() }));
+app.get("/api/events/:id", (req, res) => {
+  const event = storage.getEvent(Number(req.params.id));
+  if (!event) return res.status(404).json({ error: "Not found" });
+  res.json({ data: event });
+});
+app.post("/api/events", (req, res) => {
+  const event = storage.createEvent(req.body);
+  res.json({ data: event });
+});
+app.patch("/api/events/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const existing = storage.getEvent(id);
+  if (!existing) return res.status(404).json({ error: "Not found" });
+  const updated = storage.updateEvent(id, req.body);
+  res.json({ data: updated });
+});
+app.delete("/api/events/:id", (req, res) => {
+  storage.deleteEvent(Number(req.params.id));
+  res.json({ data: { success: true } });
+});
 
 // Notes
-app.get("/api/notes", (_req, res) => res.json({ data: storage.getNotes() }));
+app.get("/api/notes", (_req, res) => {
+  const allNotes = storage.getNotes();
+  allNotes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  res.json({ data: allNotes });
+});
+app.get("/api/notes/:id", (req, res) => {
+  const note = storage.getNote(Number(req.params.id));
+  if (!note) return res.status(404).json({ error: "Not found" });
+  res.json({ data: note });
+});
+app.post("/api/notes", (req, res) => {
+  const note = storage.createNote(req.body);
+  res.json({ data: note });
+});
+app.patch("/api/notes/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const existing = storage.getNote(id);
+  if (!existing) return res.status(404).json({ error: "Not found" });
+  const updated = storage.updateNote(id, { ...req.body, updatedAt: new Date().toISOString() });
+  res.json({ data: updated });
+});
+app.delete("/api/notes/:id", (req, res) => {
+  storage.deleteNote(Number(req.params.id));
+  res.json({ data: { success: true } });
+});
 
 // Contacts
 app.get("/api/contacts", (_req, res) => res.json({ data: storage.getContacts() }));
