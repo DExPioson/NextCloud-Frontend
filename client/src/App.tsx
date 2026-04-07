@@ -11,6 +11,8 @@ import Files from "@/pages/Files";
 import Talk from "@/pages/Talk";
 import Calendar from "@/pages/Calendar";
 import Notes from "@/pages/Notes";
+import Contacts from "@/pages/Contacts";
+import Deck from "@/pages/Deck";
 
 // ─── Theme ──────────────────────────────────────────────────
 function useTheme() {
@@ -82,8 +84,8 @@ function AppShell() {
               <Route path="/talk">{() => <Talk />}</Route>
               <Route path="/calendar">{() => <Calendar />}</Route>
               <Route path="/notes">{() => <Notes />}</Route>
-              <Route path="/contacts">{() => <StubPage title="Contacts" />}</Route>
-              <Route path="/deck">{() => <StubPage title="Deck" />}</Route>
+              <Route path="/contacts">{() => <Contacts />}</Route>
+              <Route path="/deck">{() => <Deck />}</Route>
               <Route path="/mail">{() => <StubPage title="Mail" />}</Route>
               <Route path="/activity">{() => <StubPage title="Activity" />}</Route>
               <Route path="/media">{() => <StubPage title="Media" />}</Route>

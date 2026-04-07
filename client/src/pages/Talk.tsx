@@ -6,7 +6,7 @@ import {
   Search, PanelRight, Paperclip, Smile, SendHorizontal,
   Users, PhoneOff, X, FileText, Image, File,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getAvatarColor, getInitials } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,23 +19,7 @@ import type { Conversation, Message } from "@shared/schema";
 
 // ─── Helpers ────────────────────────────────────────────────
 
-function getAvatarColor(name: string): string {
-  const colors = [
-    "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300",
-    "bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300",
-    "bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300",
-    "bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300",
-    "bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300",
-    "bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-300",
-    "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300",
-  ];
-  const index = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length;
-  return colors[index];
-}
 
-function getInitials(name: string) {
-  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
-}
 
 function formatMessageTime(dateStr: string) {
   return format(new Date(dateStr), "h:mm a");

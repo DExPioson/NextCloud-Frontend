@@ -189,15 +189,70 @@ app.delete("/api/notes/:id", (req, res) => {
 });
 
 // Contacts
-app.get("/api/contacts", (_req, res) => res.json({ data: storage.getContacts() }));
+app.get("/api/contacts", (_req, res) => {
+  const all = storage.getContacts();
+  all.sort((a, b) => a.name.localeCompare(b.name));
+  res.json({ data: all });
+});
+app.get("/api/contacts/:id", (req, res) => {
+  const c = storage.getContact(Number(req.params.id));
+  if (!c) return res.status(404).json({ error: "Not found" });
+  res.json({ data: c });
+});
+app.post("/api/contacts", (req, res) => {
+  const c = storage.createContact(req.body);
+  res.json({ data: c });
+});
+app.patch("/api/contacts/:id", (req, res) => {
+  const c = storage.updateContact(Number(req.params.id), req.body);
+  if (!c) return res.status(404).json({ error: "Not found" });
+  res.json({ data: c });
+});
+app.delete("/api/contacts/:id", (req, res) => {
+  storage.deleteContact(Number(req.params.id));
+  res.json({ data: { success: true } });
+});
 
 // Boards
 app.get("/api/boards", (_req, res) => res.json({ data: storage.getBoards() }));
-app.get("/api/boards/:id/stacks", (req, res) => {
-  res.json({ data: storage.getStacks(Number(req.params.id)) });
+app.get("/api/boards/:id", (req, res) => {
+  const board = storage.getBoard(Number(req.params.id));
+  if (!board) return res.status(404).json({ error: "Not found" });
+  const boardStacks = storage.getStacks(board.id);
+  const boardCards = storage.getCards(board.id);
+  const stacksWithCards = boardStacks
+    .sort((a, b) => a.order - b.order)
+    .map(s => ({
+      ...s,
+      cards: boardCards.filter(c => c.stackId === s.id).sort((a, b) => a.order - b.order),
+    }));
+  res.json({ data: { board, stacks: stacksWithCards } });
 });
-app.get("/api/boards/:id/cards", (req, res) => {
-  res.json({ data: storage.getCards(Number(req.params.id)) });
+app.post("/api/boards", (req, res) => {
+  const b = storage.createBoard(req.body);
+  res.json({ data: b });
+});
+app.post("/api/boards/:id/stacks", (req, res) => {
+  const boardId = Number(req.params.id);
+  const s = storage.createStack({ boardId, title: req.body.title, order: req.body.order });
+  res.json({ data: s });
+});
+app.post("/api/boards/:boardId/stacks/:stackId/cards", (req, res) => {
+  const boardId = Number(req.params.boardId);
+  const stackId = Number(req.params.stackId);
+  const c = storage.createCard({ ...req.body, boardId, stackId });
+  res.json({ data: c });
+});
+
+// Cards
+app.patch("/api/cards/:id", (req, res) => {
+  const c = storage.updateCard(Number(req.params.id), req.body);
+  if (!c) return res.status(404).json({ error: "Not found" });
+  res.json({ data: c });
+});
+app.delete("/api/cards/:id", (req, res) => {
+  storage.deleteCard(Number(req.params.id));
+  res.json({ data: { success: true } });
 });
 
 // Emails

@@ -430,12 +430,15 @@ export interface IStorage {
   getContacts(): Contact[];
   getContact(id: number): Contact | undefined;
   createContact(contact: { name: string; email?: string; phone?: string; company?: string; group?: string }): Contact;
+  updateContact(id: number, data: Partial<Contact>): Contact | undefined;
   deleteContact(id: number): void;
   // Boards
   getBoards(): Board[];
   getBoard(id: number): Board | undefined;
+  createBoard(board: { title: string; color?: string }): Board;
   // Stacks
   getStacks(boardId: number): Stack[];
+  createStack(stack: { boardId: number; title: string; order?: number }): Stack;
   // Cards
   getCards(boardId: number): Card[];
   getCard(id: number): Card | undefined;
@@ -507,12 +510,18 @@ class DatabaseStorage implements IStorage {
   createContact(contact: { name: string; email?: string; phone?: string; company?: string; group?: string }) {
     return db.insert(contacts).values(contact).returning().get();
   }
+  updateContact(id: number, data: Partial<Contact>) {
+    db.update(contacts).set(data).where(eq(contacts.id, id)).run();
+    return this.getContact(id);
+  }
   deleteContact(id: number) { db.delete(contacts).where(eq(contacts.id, id)).run(); }
 
   getBoards() { return db.select().from(boards).all(); }
   getBoard(id: number) { return db.select().from(boards).where(eq(boards.id, id)).get(); }
+  createBoard(board: { title: string; color?: string }) { return db.insert(boards).values(board).returning().get(); }
 
   getStacks(boardId: number) { return db.select().from(stacks).where(eq(stacks.boardId, boardId)).all(); }
+  createStack(stack: { boardId: number; title: string; order?: number }) { return db.insert(stacks).values(stack).returning().get(); }
 
   getCards(boardId: number) { return db.select().from(cards).where(eq(cards.boardId, boardId)).all(); }
   getCard(id: number) { return db.select().from(cards).where(eq(cards.id, id)).get(); }
