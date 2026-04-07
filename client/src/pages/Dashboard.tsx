@@ -12,9 +12,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function getGreeting() {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+  if (h < 12) return "\u{1F305} Good morning";
+  if (h < 17) return "\u{2600}\u{FE0F} Good afternoon";
+  return "\u{1F319} Good evening";
 }
 
 function formatBytes(bytes: number) {

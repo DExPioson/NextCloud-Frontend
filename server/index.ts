@@ -21,6 +21,12 @@ app.get("/api/user", (_req, res) => {
   res.json({ data: user });
 });
 
+app.patch("/api/user", (req, res) => {
+  const updated = storage.updateUser(1, req.body);
+  if (!updated) return res.status(404).json({ error: "Not found" });
+  res.json({ data: updated });
+});
+
 // Dashboard aggregate
 app.get("/api/dashboard", (_req, res) => {
   const user = storage.getUser(1);

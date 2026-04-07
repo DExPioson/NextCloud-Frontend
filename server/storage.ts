@@ -399,6 +399,7 @@ export interface IStorage {
   getUser(id: number): User | undefined;
   getUserByEmail(email: string): User | undefined;
   createUser(user: InsertUser): User;
+  updateUser(id: number, data: Partial<User>): User | undefined;
   // Files
   getAllFiles(): DbFile[];
   getFiles(parentPath: string): DbFile[];
@@ -464,6 +465,10 @@ class DatabaseStorage implements IStorage {
   getUser(id: number) { return db.select().from(users).where(eq(users.id, id)).get(); }
   getUserByEmail(email: string) { return db.select().from(users).where(eq(users.email, email)).get(); }
   createUser(user: InsertUser) { return db.insert(users).values(user).returning().get(); }
+  updateUser(id: number, data: Partial<User>) {
+    db.update(users).set(data).where(eq(users.id, id)).run();
+    return this.getUser(id);
+  }
 
   getAllFiles() { return db.select().from(files).all(); }
   getFiles(parentPath: string) { return db.select().from(files).where(eq(files.parentPath, parentPath)).all(); }

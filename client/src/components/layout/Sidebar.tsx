@@ -12,6 +12,8 @@ import {
   Activity,
   Image,
   Settings,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CloudSpaceLogo } from "./CloudSpaceLogo";
@@ -34,9 +36,10 @@ const navItems = [
 
 interface SidebarProps {
   collapsed: boolean;
+  onToggle: () => void;
 }
 
-export function Sidebar({ collapsed }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [location] = useLocation();
 
   const { data: convosData } = useQuery({
@@ -111,14 +114,14 @@ export function Sidebar({ collapsed }: SidebarProps) {
                   <>
                     <span className="flex-1">{item.label}</span>
                     {showBadge && (
-                      <span className="bg-primary text-white text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
+                      <span className="bg-primary text-primary-foreground text-[10px] rounded-full px-1.5 min-w-[18px] text-center animate-badge-pulse">
                         {badgeCount}
                       </span>
                     )}
                   </>
                 )}
                 {collapsed && showBadge && (
-                  <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-primary rounded-full" />
+                  <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-primary rounded-full animate-badge-pulse" />
                 )}
               </Link>
             );
@@ -138,6 +141,22 @@ export function Sidebar({ collapsed }: SidebarProps) {
           })}
         </ul>
       </nav>
+
+      {/* Collapse toggle */}
+      <button
+        onClick={onToggle}
+        className={cn(
+          "flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground w-full border-t transition-colors",
+          collapsed && "justify-center"
+        )}
+      >
+        {collapsed ? <PanelLeftOpen size={16} /> : (
+          <>
+            <PanelLeftClose size={16} />
+            <span>Collapse</span>
+          </>
+        )}
+      </button>
 
       {/* User info */}
       <div className={cn("border-t p-3", collapsed && "flex justify-center p-2")}>

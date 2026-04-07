@@ -292,7 +292,7 @@ function KanbanCard({ card, index, onClick }: { card: Card; index: number; onCli
           className={cn(
             "bg-card border rounded-lg p-3 mb-2 cursor-grab active:cursor-grabbing",
             "hover:shadow-sm hover:border-primary/30 transition-all",
-            snapshot.isDragging && "shadow-lg rotate-1 opacity-90"
+            snapshot.isDragging && "shadow-2xl ring-2 ring-primary/30 rotate-2 scale-105"
           )}
           onClick={onClick}
         >

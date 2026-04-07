@@ -15,6 +15,8 @@ import Contacts from "@/pages/Contacts";
 import Deck from "@/pages/Deck";
 import Mail from "@/pages/Mail";
 import Activity from "@/pages/Activity";
+import Media from "@/pages/Media";
+import Settings from "@/pages/Settings";
 
 // ─── Theme ──────────────────────────────────────────────────
 function useTheme() {
@@ -44,25 +46,15 @@ const queryClient = new QueryClient({
   },
 });
 
-// ─── Stub Page ──────────────────────────────────────────────
-function StubPage({ title }: { title: string }) {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="text-center space-y-2">
-        <p className="text-muted-foreground text-sm">Coming in next prompt</p>
-        <h2 className="text-lg font-semibold">{title}</h2>
-      </div>
-    </div>
-  );
-}
-
 // ─── App Shell ──────────────────────────────────────────────
 function AppShell() {
   const [location] = useLocation();
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1024);
 
   const handleResize = useCallback(() => {
-    setCollapsed(window.innerWidth < 1024);
+    if (window.innerWidth < 768) {
+      setCollapsed(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -70,9 +62,13 @@ function AppShell() {
     return () => window.removeEventListener("resize", handleResize);
   }, [handleResize]);
 
+  const toggleSidebar = useCallback(() => {
+    setCollapsed((prev) => !prev);
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar collapsed={collapsed} />
+      <Sidebar collapsed={collapsed} onToggle={toggleSidebar} />
       <div
         className="flex flex-1 flex-col transition-all duration-200"
         style={{ marginLeft: collapsed ? 60 : 240 }}
@@ -90,8 +86,8 @@ function AppShell() {
               <Route path="/deck">{() => <Deck />}</Route>
               <Route path="/mail">{() => <Mail />}</Route>
               <Route path="/activity">{() => <Activity />}</Route>
-              <Route path="/media">{() => <StubPage title="Media" />}</Route>
-              <Route path="/settings">{() => <StubPage title="Settings" />}</Route>
+              <Route path="/media">{() => <Media />}</Route>
+              <Route path="/settings">{() => <Settings />}</Route>
             </Switch>
           </div>
         </main>
