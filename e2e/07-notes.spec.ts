@@ -5,20 +5,20 @@ test.describe("Notes", () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
     await navigateTo(page, "/notes");
+    // Wait for the notes API response to arrive
+    await page.waitForResponse((r) => r.url().includes("/api/notes") && r.status() === 200, { timeout: 15000 }).catch(() => {});
     await page.waitForLoadState("networkidle");
   });
 
   test("Notes page loads", async ({ page }) => {
-    // The notes heading should be visible
     await expect(page.getByRole("heading", { name: "Notes" })).toBeVisible({ timeout: 10000 });
   });
 
   test("Select and read a note", async ({ page }) => {
-    // Check if any notes exist in the list
-    const noteItem = page.locator("main .cursor-pointer").first();
-    const hasNotes = await noteItem.isVisible({ timeout: 5000 }).catch(() => false);
+    // Wait for note items to render after API data loads
+    const noteItem = page.locator("main .cursor-pointer, main button").filter({ hasText: /\w{3,}/ }).first();
+    const hasNotes = await noteItem.isVisible({ timeout: 10000 }).catch(() => false);
     if (!hasNotes) {
-      // No notes available from NC — skip gracefully
       test.skip();
       return;
     }
@@ -63,9 +63,8 @@ test.describe("Notes", () => {
   });
 
   test("Delete a note", async ({ page }) => {
-    // Check if notes with hover menus exist
-    const noteItem = page.locator("main .cursor-pointer").first();
-    const hasNotes = await noteItem.isVisible({ timeout: 5000 }).catch(() => false);
+    const noteItem = page.locator("main .cursor-pointer, main button").filter({ hasText: /\w{3,}/ }).first();
+    const hasNotes = await noteItem.isVisible({ timeout: 10000 }).catch(() => false);
     if (!hasNotes) {
       test.skip();
       return;
@@ -84,8 +83,8 @@ test.describe("Notes", () => {
   });
 
   test("Pin/unpin a note", async ({ page }) => {
-    const noteItem = page.locator("main .cursor-pointer").first();
-    const hasNotes = await noteItem.isVisible({ timeout: 5000 }).catch(() => false);
+    const noteItem = page.locator("main .cursor-pointer, main button").filter({ hasText: /\w{3,}/ }).first();
+    const hasNotes = await noteItem.isVisible({ timeout: 10000 }).catch(() => false);
     if (!hasNotes) {
       test.skip();
       return;
