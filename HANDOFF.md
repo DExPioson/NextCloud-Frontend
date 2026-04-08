@@ -236,6 +236,31 @@ Cross-app polish pass implementing the most impactful UX improvements:
 **Tailwind config**:
 - Added `badge-pulse` keyframes animation (opacity 1 → 0.7 → 1, 2s infinite)
 
+### Talk Page Audit
+
+Major overhaul of Talk.tsx (~1050 lines) implementing 7 fixes:
+
+**Fix 1 — Search**: Conversation list search input filters DMs and groups by name/lastMessage. When query matches a contact not in an existing conversation, a "People" section appears below with clickable entries that start a new DM.
+
+**Fix 2 — Mute notifications**: Functional toggle per conversation (persisted via `PATCH /api/conversations/:id/mute`). BellOff icon shown next to muted conversation names. Toggle available in info panel for both DMs and groups.
+
+**Fix 3 — Leave group**: "Leave group" button in info panel opens confirm dialog. On confirm, calls `DELETE /api/conversations/:id/members/me`, removes conversation, selects next available.
+
+**Fix 4 — Group admin system**: `adminId` and `createdBy` fields added to conversations schema. Admin badge shown next to admin member in info panel. Admin-only section with: Add member (dialog with contact list), Transfer admin (radio select from other members), Delete group (confirm dialog). Transfer updates `adminId` via `PATCH /api/conversations/:id/admin`.
+
+**Fix 5 — Call UI**: Full-screen overlays for voice, video, and screen share:
+- Voice call: centered avatar, duration timer, participant row (group), mute/speaker/dialpad/more controls, red end button
+- Video call: 2x2 grid (group) or main+PIP (DM), duration badge, control bar (mic/camera/screen share/more/end), screen share layout with "stop sharing" button
+- Speaking simulation: random participant highlighted with green ring every 3s
+- Incoming call banner: top-right card with Accept/Decline, auto-dismiss after 15s
+- "Simulate incoming call" button in toolbar (PhoneIncoming icon)
+
+**Fix 6 — Toolbar button states**: Voice/Video/Screen share buttons show active state (colored background) when in call. Search and Info panel buttons show pressed state (bg-muted) when toggled on.
+
+**Fix 7 — New group creation**: New conversation dialog has DM/Group tabs. Group tab: name input, member checklist with checkboxes, selected members shown as chips, "Create group" button. Creates via `POST /api/conversations` with adminId=1.
+
+**Schema changes**: `conversations` table gained `is_muted`, `admin_id`, `created_by` columns. `deleteConversation` method added to storage (cascading delete of messages).
+
 **Partially deferred to Prompt #09**:
 - Skeleton loaders audit (pages already have skeletons from initial builds)
 - Empty states audit (pages already have empty state UIs)
@@ -276,6 +301,10 @@ GET  /api/conversations           -> { data: Conversation[] }
 GET  /api/conversations/:id       -> { data: Conversation }
 POST /api/conversations           -> { data: Conversation }
 PATCH /api/conversations/:id/read -> { data: { success } }
+PATCH /api/conversations/:id/mute -> { data: { isMuted } }     (toggle mute)
+PATCH /api/conversations/:id/admin -> { data: Conversation }   (transfer admin)
+DELETE /api/conversations/:id/members/me -> { data: { success } } (leave group)
+DELETE /api/conversations/:id     -> { data: { success } }      (delete group)
 GET  /api/conversations/:id/messages -> { data: Message[] }
 POST /api/conversations/:id/messages -> { data: Message }
 

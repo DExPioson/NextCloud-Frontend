@@ -119,6 +119,23 @@ app.patch("/api/conversations/:id/read", (req, res) => {
   storage.updateConversation(Number(req.params.id), { unreadCount: 0 });
   res.json({ data: { success: true } });
 });
+app.patch("/api/conversations/:id/mute", (req, res) => {
+  const updated = storage.updateConversation(Number(req.params.id), { isMuted: req.body.muted });
+  res.json({ data: { isMuted: updated?.isMuted } });
+});
+app.patch("/api/conversations/:id/admin", (req, res) => {
+  const updated = storage.updateConversation(Number(req.params.id), { adminId: req.body.adminId });
+  if (!updated) return res.status(404).json({ error: "Not found" });
+  res.json({ data: updated });
+});
+app.delete("/api/conversations/:id/members/me", (req, res) => {
+  storage.deleteConversation(Number(req.params.id));
+  res.json({ data: { success: true } });
+});
+app.delete("/api/conversations/:id", (req, res) => {
+  storage.deleteConversation(Number(req.params.id));
+  res.json({ data: { success: true } });
+});
 
 // Messages
 app.get("/api/conversations/:id/messages", (req, res) => {

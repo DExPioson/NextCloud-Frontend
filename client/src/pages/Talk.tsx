@@ -5,6 +5,9 @@ import {
   MessageSquare, SquarePen, Phone, Video, MonitorUp,
   Search, PanelRight, Paperclip, Smile, SendHorizontal,
   Users, PhoneOff, X, FileText, Image, File,
+  Bell, BellOff, Crown, Trash2, UserPlus, Mic, MicOff,
+  Volume2, VolumeX, Grid3x3, MoreHorizontal, VideoOff,
+  ChevronRight, PhoneIncoming,
 } from "lucide-react";
 import { cn, getAvatarColor, getInitials } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
@@ -15,11 +18,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import type { Conversation, Message } from "@shared/schema";
 
 // ─── Helpers ────────────────────────────────────────────────
-
-
 
 function formatMessageTime(dateStr: string) {
   return format(new Date(dateStr), "h:mm a");
@@ -44,9 +47,18 @@ function formatRelativeTime(dateStr: string) {
   return format(d, "MMM d");
 }
 
+function formatCallDuration(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 const EMOJI_LIST = ["😀","😂","👍","❤️","🎉","🔥","👀","🙏","💯","✅","🚀","😎","🤔","💡","📌","✨","🎯","📊","🏆","👏"];
 
-// ─── Toast system (simple) ──────────────────────────────────
+const SEEDED_CONTACTS = [
+  "Rohan Mehra", "Priya Kapoor", "Arjun Singh", "Neha Joshi", "Vikram Patel",
+  "Anjali Gupta", "Rahul Verma", "Kavita Reddy", "Deepak Malhotra", "Sneha Iyer",
+];
+
+// ─── Toast system ──────────────────────────────────────────
 
 function useToast() {
   const [toast, setToast] = useState<{ message: string; action?: React.ReactNode } | null>(null);
@@ -82,7 +94,8 @@ const MOCK_MEMBERS: Record<string, { name: string; email: string }[]> = {
   ],
   "HomeServer Admins": [
     { name: "Piyush Sharma", email: "piyush@cloudspace.home" },
-    { name: "Arjun Singh", email: "arjun@cloudspace.home" },
+    { name: "Vikram Patel", email: "vikram@cloudspace.home" },
+    { name: "Deepak Malhotra", email: "deepak@cloudspace.home" },
   ],
 };
 
@@ -91,6 +104,22 @@ const MOCK_SHARED_FILES = [
   { name: "Design Mockups.fig", size: "8.5 MB", icon: File },
   { name: "Team Photo.jpg", size: "3.4 MB", icon: Image },
 ];
+
+// ─── Types ──────────────────────────────────────────────────
+
+type CallState = {
+  active: boolean;
+  type: "voice" | "video" | "screen";
+  conversationId: number;
+  conversationName: string;
+  startedAt: Date;
+  isMuted: boolean;
+  isVideoOff: boolean;
+  isSpeakerOn: boolean;
+  isScreenSharing: boolean;
+  participants: { id: number; name: string; isSpeaking: boolean }[];
+  duration: number;
+};
 
 // ─── Components ─────────────────────────────────────────────
 
@@ -142,7 +171,10 @@ function ConversationRow({
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium truncate">{c.name}</span>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-medium truncate">{c.name}</span>
+            {c.isMuted && <BellOff size={12} className="text-muted-foreground/50 shrink-0" />}
+          </div>
           {c.lastMessageAt && (
             <span className="text-xs text-muted-foreground shrink-0 ml-2">
               {formatRelativeTime(c.lastMessageAt)}
@@ -263,11 +295,301 @@ function TypingIndicator({ name }: { name: string }) {
   );
 }
 
+// ─── Voice Call Overlay ─────────────────────────────────────
+
+function VoiceCallOverlay({ callState, onUpdate, onEnd }: {
+  callState: CallState;
+  onUpdate: (partial: Partial<CallState>) => void;
+  onEnd: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-gradient-to-b from-gray-800 to-gray-900 flex flex-col items-center justify-center text-white">
+      {/* Main caller */}
+      <Avatar name={callState.conversationName} size={96} />
+      <p className="text-xl font-semibold mt-4">{callState.conversationName}</p>
+      <p className="text-lg text-white/70 mt-1 font-mono">{formatCallDuration(callState.duration)}</p>
+
+      {/* Participants for group calls */}
+      {callState.participants.length > 2 && (
+        <div className="flex gap-4 mt-6">
+          {callState.participants.map((p) => (
+            <div key={p.id} className="flex flex-col items-center gap-1">
+              <div className={cn("relative", p.isSpeaking && "ring-2 ring-green-400 rounded-full")}>
+                <Avatar name={p.name} size={48} />
+                {p.isSpeaking && (
+                  <div className="absolute inset-0 rounded-full ring-2 ring-green-400 animate-ping opacity-40" />
+                )}
+              </div>
+              <span className="text-xs text-white/70">{p.name.split(" ")[0]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Controls */}
+      <div className="flex items-center gap-4 mt-12">
+        <button
+          onClick={() => onUpdate({ isMuted: !callState.isMuted })}
+          className={cn(
+            "h-14 w-14 rounded-full flex items-center justify-center transition-colors",
+            callState.isMuted ? "bg-red-500/70 text-white" : "bg-white/10 hover:bg-white/20 text-white"
+          )}
+        >
+          {callState.isMuted ? <MicOff size={22} /> : <Mic size={22} />}
+        </button>
+        <button
+          onClick={() => onUpdate({ isSpeakerOn: !callState.isSpeakerOn })}
+          className={cn(
+            "h-14 w-14 rounded-full flex items-center justify-center transition-colors",
+            !callState.isSpeakerOn ? "bg-white/30" : "bg-white/10 hover:bg-white/20"
+          )}
+        >
+          {callState.isSpeakerOn ? <Volume2 size={22} /> : <VolumeX size={22} />}
+        </button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="h-14 w-14 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-colors">
+              <Grid3x3 size={22} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[200px] p-2">
+            <div className="grid grid-cols-3 gap-1">
+              {["1","2","3","4","5","6","7","8","9","*","0","#"].map((k) => (
+                <button key={k} className="h-10 rounded-lg bg-muted hover:bg-accent text-sm font-medium">{k}</button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="h-14 w-14 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-colors">
+              <MoreHorizontal size={22} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem>Add participant</DropdownMenuItem>
+            <DropdownMenuItem>Hold</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* End call */}
+      <button
+        onClick={onEnd}
+        className="mt-8 h-16 w-16 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+      >
+        <PhoneOff size={28} />
+      </button>
+    </div>
+  );
+}
+
+// ─── Video Call Overlay ─────────────────────────────────────
+
+function VideoCallOverlay({ callState, onUpdate, onEnd }: {
+  callState: CallState;
+  onUpdate: (partial: Partial<CallState>) => void;
+  onEnd: () => void;
+}) {
+  const isDm = callState.participants.length <= 2;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-gray-950 flex flex-col">
+      {/* Duration header */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-black/40 backdrop-blur rounded-full px-4 py-1.5 text-white text-sm font-mono">
+        {formatCallDuration(callState.duration)}
+      </div>
+
+      {/* Video tiles */}
+      <div className="flex-1 p-4 relative">
+        {callState.isScreenSharing ? (
+          /* Screen share layout */
+          <div className="h-full flex flex-col gap-3">
+            <div className="flex-1 rounded-xl bg-gray-800 flex flex-col items-center justify-center">
+              <MonitorUp size={64} className="text-white/30 mb-3" />
+              <p className="text-white font-medium">You are sharing your screen</p>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="mt-3"
+                onClick={() => onUpdate({ isScreenSharing: false })}
+              >
+                Stop sharing
+              </Button>
+            </div>
+            <div className="flex gap-2 justify-center">
+              {callState.participants.map((p) => (
+                <div
+                  key={p.id}
+                  className={cn(
+                    "w-24 h-[72px] rounded-lg bg-gray-800 flex flex-col items-center justify-center relative",
+                    p.isSpeaking && "ring-2 ring-green-400"
+                  )}
+                >
+                  <Avatar name={p.name} size={32} />
+                  <span className="absolute bottom-1 left-1 text-[10px] text-white bg-black/40 px-1 rounded">{p.name.split(" ")[0]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : isDm ? (
+          /* DM video: main tile + self PIP */
+          <div className="h-full relative">
+            <div className={cn(
+              "h-full rounded-xl bg-gray-800 flex items-center justify-center relative overflow-hidden",
+              callState.participants[0]?.isSpeaking && "ring-2 ring-green-400"
+            )}>
+              <Avatar name={callState.participants[0]?.name || callState.conversationName} size={64} />
+              <span className="absolute bottom-3 left-3 text-white text-xs font-medium bg-black/40 px-2 py-0.5 rounded">
+                {callState.participants[0]?.name || callState.conversationName}
+              </span>
+            </div>
+            {/* Self PIP */}
+            <div className="absolute bottom-4 right-4 w-[240px] h-[135px] rounded-xl bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-700">
+              {callState.isVideoOff ? (
+                <div className="flex flex-col items-center gap-1">
+                  <Avatar name="Piyush Sharma" size={48} />
+                  <span className="text-[10px] text-white/60">Camera off</span>
+                </div>
+              ) : (
+                <Avatar name="Piyush Sharma" size={48} />
+              )}
+              <span className="absolute bottom-2 left-2 text-[10px] text-white bg-black/40 px-1.5 py-0.5 rounded">You</span>
+            </div>
+          </div>
+        ) : (
+          /* Group video: grid */
+          <div className="h-full grid grid-cols-2 gap-3">
+            {callState.participants.map((p) => (
+              <div
+                key={p.id}
+                className={cn(
+                  "rounded-xl bg-gray-800 flex items-center justify-center relative overflow-hidden",
+                  p.isSpeaking && "ring-2 ring-green-400"
+                )}
+              >
+                <Avatar name={p.name} size={64} />
+                <span className="absolute bottom-2 left-2 text-white text-xs font-medium bg-black/40 px-2 py-0.5 rounded">
+                  {p.name}{p.name === "Piyush Sharma" ? " (You)" : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Control bar */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-gray-900/80 backdrop-blur rounded-2xl px-6 py-4">
+        <button
+          onClick={() => onUpdate({ isMuted: !callState.isMuted })}
+          className={cn(
+            "h-12 w-12 rounded-full flex items-center justify-center transition-colors",
+            callState.isMuted ? "bg-red-500/70 text-white" : "bg-white/10 hover:bg-white/20 text-white"
+          )}
+        >
+          {callState.isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+        </button>
+        <button
+          onClick={() => onUpdate({ isVideoOff: !callState.isVideoOff })}
+          className={cn(
+            "h-12 w-12 rounded-full flex items-center justify-center transition-colors",
+            callState.isVideoOff ? "bg-red-500/70 text-white" : "bg-white/10 hover:bg-white/20 text-white"
+          )}
+        >
+          {callState.isVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
+        </button>
+        <button
+          onClick={() => onUpdate({ isScreenSharing: !callState.isScreenSharing })}
+          className={cn(
+            "h-12 w-12 rounded-full flex items-center justify-center transition-colors",
+            callState.isScreenSharing ? "bg-green-600/80 text-white" : "bg-white/10 hover:bg-white/20 text-white"
+          )}
+        >
+          <MonitorUp size={20} />
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="h-12 w-12 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-colors">
+              <MoreHorizontal size={20} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem>Add participant</DropdownMenuItem>
+            <DropdownMenuItem>Hold</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <button
+          onClick={onEnd}
+          className="h-12 w-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors ml-2"
+        >
+          <PhoneOff size={20} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Incoming Call Notification ─────────────────────────────
+
+function IncomingCallBanner({ callerName, onAccept, onDecline }: {
+  callerName: string;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  return (
+    <div className="fixed top-4 right-4 z-50 bg-card border shadow-2xl rounded-2xl p-4 animate-fade-in w-80">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="relative">
+          <Avatar name={callerName} size={48} />
+          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+            <Phone size={10} className="text-white" />
+          </div>
+        </div>
+        <div>
+          <p className="font-semibold text-sm">{callerName}</p>
+          <p className="text-xs text-muted-foreground">Incoming video call...</p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button className="flex-1 bg-red-500 hover:bg-red-600 text-white" size="sm" onClick={onDecline}>
+          <PhoneOff size={14} className="mr-1" /> Decline
+        </Button>
+        <Button className="flex-1 bg-green-500 hover:bg-green-600 text-white" size="sm" onClick={onAccept}>
+          <Phone size={14} className="mr-1" /> Accept
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Info Panel ─────────────────────────────────────────────
 
-function InfoPanel({ conversation }: { conversation: Conversation }) {
+function InfoPanel({
+  conversation,
+  onMuteToggle,
+  onLeaveGroup,
+  onDeleteGroup,
+  onTransferAdmin,
+  showToast,
+}: {
+  conversation: Conversation;
+  onMuteToggle: () => void;
+  onLeaveGroup: () => void;
+  onDeleteGroup: () => void;
+  onTransferAdmin: (memberId: number, memberName: string) => void;
+  showToast: (msg: string) => void;
+}) {
   const isDm = conversation.type === "dm";
   const members = MOCK_MEMBERS[conversation.name] || [];
+  const isAdmin = conversation.adminId === 1;
+
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [selectedTransferMember, setSelectedTransferMember] = useState<{ id: number; name: string } | null>(null);
+
+  const otherMembers = members.filter((m) => m.name !== "Piyush Sharma");
 
   return (
     <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden bg-background">
@@ -294,11 +616,11 @@ function InfoPanel({ conversation }: { conversation: Conversation }) {
       {isDm ? (
         <>
           <div className="p-3 space-y-1">
-            {["View profile", "Mute notifications", "Block user"].map((label) => (
-              <Button key={label} variant="ghost" className="w-full justify-start text-sm h-9">
-                {label}
-              </Button>
-            ))}
+            <Button variant="ghost" className="w-full justify-start text-sm h-9">View profile</Button>
+            <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={onMuteToggle}>
+              {conversation.isMuted ? <><BellOff size={16} className="mr-2" /> Unmute notifications</> : <><Bell size={16} className="mr-2" /> Mute notifications</>}
+            </Button>
+            <Button variant="ghost" className="w-full justify-start text-sm h-9">Block user</Button>
           </div>
           <Separator />
           <div className="p-3">
@@ -316,12 +638,6 @@ function InfoPanel({ conversation }: { conversation: Conversation }) {
         </>
       ) : (
         <>
-          <div className="p-3">
-            <Button variant="outline" size="sm" className="w-full">
-              Edit group
-            </Button>
-          </div>
-          <Separator />
           <div className="p-3 flex-1 overflow-y-auto">
             <p className="text-xs font-medium text-muted-foreground mb-2">MEMBERS</p>
             <div className="space-y-2">
@@ -331,25 +647,167 @@ function InfoPanel({ conversation }: { conversation: Conversation }) {
                     <Avatar name={member.name} size={36} />
                     <OnlineDot size={6} className="absolute bottom-0 right-0" />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{member.name}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate">{member.name}</p>
+                      {member.name === "Piyush Sharma" && (
+                        <span className="text-[11px] text-muted-foreground">(you)</span>
+                      )}
+                      {/* Admin badge: adminId=1 → Piyush, adminId=N → SEEDED_CONTACTS[N-2] */}
+                      {(() => {
+                        const aid = conversation.adminId;
+                        if (!aid) return null;
+                        if (aid === 1 && member.name === "Piyush Sharma") {
+                          return <Badge variant="secondary" className="text-[10px] px-1.5">Admin</Badge>;
+                        }
+                        if (aid >= 2 && SEEDED_CONTACTS[aid - 2] === member.name) {
+                          return <Badge variant="secondary" className="text-[10px] px-1.5">Admin</Badge>;
+                        }
+                        return null;
+                      })()}
+                    </div>
                     <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                   </div>
                 </div>
               ))}
             </div>
+
+            {/* Admin actions */}
+            {isAdmin && !isDm && (
+              <>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider pt-3 pb-1">Admin</p>
+                <div className="space-y-1">
+                  <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => setAddMemberOpen(true)}>
+                    <UserPlus size={16} className="mr-2" /> Add member
+                  </Button>
+                  <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => setTransferOpen(true)}>
+                    <Crown size={16} className="mr-2" /> Transfer admin
+                  </Button>
+                  <Button variant="ghost" className="w-full justify-start text-sm h-9 text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+                    <Trash2 size={16} className="mr-2" /> Delete group
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
           <Separator />
           <div className="p-3 space-y-1">
-            <Button variant="ghost" className="w-full justify-start text-sm h-9">
-              Mute notifications
+            <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={onMuteToggle}>
+              {conversation.isMuted ? <><BellOff size={16} className="mr-2" /> Unmute notifications</> : <><Bell size={16} className="mr-2" /> Mute notifications</>}
             </Button>
-            <Button variant="ghost" className="w-full justify-start text-sm h-9 text-destructive hover:text-destructive">
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-sm h-9 text-destructive hover:text-destructive"
+              onClick={() => setLeaveOpen(true)}
+            >
               Leave group
             </Button>
           </div>
         </>
       )}
+
+      {/* Leave group confirm */}
+      <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Leave group?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            You'll no longer receive messages from {conversation.name}. You can rejoin if someone adds you back.
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setLeaveOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => { setLeaveOpen(false); onLeaveGroup(); }}>Leave group</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete group confirm */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete group?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will permanently delete {conversation.name} and all its messages for all members.
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => { setDeleteOpen(false); onDeleteGroup(); }}>Delete group</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer admin */}
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transfer admin role</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mb-3">
+            Choose a new admin for {conversation.name}. You'll become a regular member.
+          </p>
+          <div className="space-y-1">
+            {otherMembers.map((m) => {
+              const memberId = SEEDED_CONTACTS.indexOf(m.name) + 2; // +2 because Piyush=1
+              const isSelected = selectedTransferMember?.name === m.name;
+              return (
+                <button
+                  key={m.name}
+                  onClick={() => setSelectedTransferMember({ id: memberId, name: m.name })}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
+                    isSelected ? "bg-accent" : "hover:bg-muted"
+                  )}
+                >
+                  <div className={cn("h-4 w-4 rounded-full border-2", isSelected ? "border-primary bg-primary" : "border-muted-foreground")} />
+                  <Avatar name={m.name} size={32} />
+                  <span className="text-sm font-medium">{m.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setTransferOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!selectedTransferMember}
+              onClick={() => {
+                if (selectedTransferMember) {
+                  onTransferAdmin(selectedTransferMember.id, selectedTransferMember.name);
+                  setTransferOpen(false);
+                  setSelectedTransferMember(null);
+                }
+              }}
+            >
+              Transfer
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add member */}
+      <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add member</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1 max-h-[300px] overflow-y-auto">
+            {SEEDED_CONTACTS.filter((n) => !members.some((m) => m.name === n)).map((name) => (
+              <button
+                key={name}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+                onClick={() => {
+                  showToast(`Member added: ${name}`);
+                  setAddMemberOpen(false);
+                }}
+              >
+                <Avatar name={name} size={32} />
+                <span className="text-sm font-medium">{name}</span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -368,9 +826,17 @@ export default function Talk() {
   const [composerContent, setComposerContent] = useState("");
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [callState, setCallState] = useState<CallState | null>(null);
+  const [incomingCall, setIncomingCall] = useState<string | null>(null);
+  const [newGroupTab, setNewGroupTab] = useState<"dm" | "group">("dm");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
+  const [newDmSearch, setNewDmSearch] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const incomingCallTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Queries
   const { data: conversationsData } = useQuery({
@@ -407,6 +873,79 @@ export default function Talk() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messagesList]);
 
+  // Call duration counter
+  useEffect(() => {
+    if (!callState?.active) return;
+    const interval = setInterval(() => {
+      setCallState((prev) => prev ? { ...prev, duration: prev.duration + 1 } : null);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [callState?.active]);
+
+  // Speaking simulation
+  useEffect(() => {
+    if (!callState?.active) return;
+    const interval = setInterval(() => {
+      setCallState((prev) => {
+        if (!prev) return null;
+        const speakingIdx = Math.floor(Math.random() * prev.participants.length);
+        return {
+          ...prev,
+          participants: prev.participants.map((p, i) => ({ ...p, isSpeaking: i === speakingIdx })),
+        };
+      });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [callState?.active]);
+
+  // Incoming call auto-dismiss
+  useEffect(() => {
+    if (!incomingCall) return;
+    incomingCallTimeoutRef.current = setTimeout(() => setIncomingCall(null), 15000);
+    return () => { if (incomingCallTimeoutRef.current) clearTimeout(incomingCallTimeoutRef.current); };
+  }, [incomingCall]);
+
+  // Build participants from conversation
+  function buildParticipants(conv: Conversation) {
+    const memberNames: string[] = conv.members ? JSON.parse(conv.members) : [];
+    if (conv.type === "dm") {
+      return [
+        { id: 2, name: conv.name, isSpeaking: false },
+        { id: 1, name: "Piyush Sharma", isSpeaking: false },
+      ];
+    }
+    return memberNames.map((name, i) => ({ id: i + 1, name, isSpeaking: false }));
+  }
+
+  function startCall(type: "voice" | "video" | "screen") {
+    if (!activeConversation) return;
+    setCallState({
+      active: true,
+      type,
+      conversationId: activeConversation.id,
+      conversationName: activeConversation.name,
+      startedAt: new Date(),
+      isMuted: false,
+      isVideoOff: type === "voice",
+      isSpeakerOn: true,
+      isScreenSharing: type === "screen",
+      participants: buildParticipants(activeConversation),
+      duration: 0,
+    });
+    setIncomingCall(null);
+  }
+
+  function endCall() {
+    if (callState) {
+      showToast(`Call ended · ${formatCallDuration(callState.duration)}`);
+    }
+    setCallState(null);
+  }
+
+  function updateCall(partial: Partial<CallState>) {
+    setCallState((prev) => prev ? { ...prev, ...partial } : null);
+  }
+
   // Send message mutation
   const sendMutation = useMutation({
     mutationFn: async (content: string) => {
@@ -429,14 +968,63 @@ export default function Talk() {
     },
   });
 
+  // Mute mutation
+  const muteMutation = useMutation({
+    mutationFn: async ({ id, muted }: { id: number; muted: boolean }) => {
+      await apiRequest("PATCH", `/api/conversations/${id}/mute`, { muted });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+  });
+
+  // Leave group mutation
+  const leaveGroupMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/conversations/${id}/members/me`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+  });
+
+  // Delete group mutation
+  const deleteGroupMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/conversations/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+  });
+
+  // Transfer admin mutation
+  const transferAdminMutation = useMutation({
+    mutationFn: async ({ id, adminId }: { id: number; adminId: number }) => {
+      await apiRequest("PATCH", `/api/conversations/${id}/admin`, { adminId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+  });
+
+  // Create conversation mutation
+  const createConversationMutation = useMutation({
+    mutationFn: async (data: { name: string; type: string; adminId?: number; createdBy?: number; members?: string }) => {
+      const res = await apiRequest("POST", "/api/conversations", data);
+      return res.json() as Promise<{ data: Conversation }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      setActiveConversationId(result.data.id);
+    },
+  });
+
   const handleSelectConversation = useCallback((id: number) => {
     setActiveConversationId(id);
-    // Optimistically clear unread count
     queryClient.setQueryData(["/api/conversations"], (old: { data: Conversation[] } | undefined) => {
       if (!old) return old;
-      return {
-        data: old.data.map((c) => c.id === id ? { ...c, unreadCount: 0 } : c),
-      };
+      return { data: old.data.map((c) => c.id === id ? { ...c, unreadCount: 0 } : c) };
     });
     markReadMutation.mutate(id);
   }, [markReadMutation, queryClient]);
@@ -445,7 +1033,6 @@ export default function Talk() {
     const content = composerContent.trim();
     if (!content || !activeConversationId) return;
 
-    // Optimistic update — append message locally
     const optimisticMsg: Message = {
       id: Date.now(),
       conversationId: activeConversationId,
@@ -464,9 +1051,7 @@ export default function Talk() {
     );
 
     setComposerContent("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     sendMutation.mutate(content);
   }, [composerContent, activeConversationId, sendMutation, queryClient]);
 
@@ -492,6 +1077,72 @@ export default function Talk() {
     typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
   };
 
+  const handleMuteToggle = () => {
+    if (!activeConversation) return;
+    const newMuted = !activeConversation.isMuted;
+    muteMutation.mutate({ id: activeConversation.id, muted: newMuted });
+    showToast(newMuted ? "Notifications muted" : "Notifications unmuted");
+  };
+
+  const handleLeaveGroup = () => {
+    if (!activeConversation) return;
+    const name = activeConversation.name;
+    leaveGroupMutation.mutate(activeConversation.id);
+    // Select next conversation
+    const remaining = conversations.filter((c) => c.id !== activeConversation.id);
+    setActiveConversationId(remaining.length > 0 ? remaining[0].id : null);
+    showToast(`You left ${name}`);
+  };
+
+  const handleDeleteGroup = () => {
+    if (!activeConversation) return;
+    const name = activeConversation.name;
+    deleteGroupMutation.mutate(activeConversation.id);
+    const remaining = conversations.filter((c) => c.id !== activeConversation.id);
+    setActiveConversationId(remaining.length > 0 ? remaining[0].id : null);
+    showToast(`Group deleted: ${name}`);
+  };
+
+  const handleTransferAdmin = (memberId: number, memberName: string) => {
+    if (!activeConversation) return;
+    transferAdminMutation.mutate({ id: activeConversation.id, adminId: memberId });
+    showToast(`Admin role transferred to ${memberName}`);
+  };
+
+  const handleCreateGroup = () => {
+    if (!newGroupName.trim() || newGroupMembers.length === 0) return;
+    const allMembers = ["Piyush Sharma", ...newGroupMembers];
+    createConversationMutation.mutate({
+      name: newGroupName,
+      type: "group",
+      adminId: 1,
+      createdBy: 1,
+      members: JSON.stringify(allMembers),
+    });
+    setNewChatOpen(false);
+    setNewGroupName("");
+    setNewGroupMembers([]);
+    showToast("Group created");
+  };
+
+  const handleStartDm = (contactName: string) => {
+    // Check if DM already exists
+    const existing = conversations.find((c) => c.type === "dm" && c.name === contactName);
+    if (existing) {
+      handleSelectConversation(existing.id);
+    } else {
+      createConversationMutation.mutate({
+        name: contactName,
+        type: "dm",
+        members: JSON.stringify(["Piyush Sharma", contactName]),
+      });
+    }
+    setSearchQuery("");
+    setNewChatOpen(false);
+    setNewDmSearch("");
+    textareaRef.current?.focus();
+  };
+
   // Group messages by date for rendering
   const groupedMessages = messagesList.reduce<{ date: string; messages: Message[] }[]>((groups, msg) => {
     const dateKey = new Date(msg.sentAt).toDateString();
@@ -504,12 +1155,49 @@ export default function Talk() {
     return groups;
   }, []);
 
+  // Filter conversations by search
+  const query = searchQuery.toLowerCase().trim();
   const dmConversations = conversations.filter((c) => c.type === "dm");
   const groupConversations = conversations.filter((c) => c.type === "group");
+
+  const filteredDm = query
+    ? dmConversations.filter((c) => c.name.toLowerCase().includes(query) || (c.lastMessage || "").toLowerCase().includes(query))
+    : dmConversations;
+  const filteredGroups = query
+    ? groupConversations.filter((c) => c.name.toLowerCase().includes(query) || (c.lastMessage || "").toLowerCase().includes(query))
+    : groupConversations;
+
+  // People search — contacts not already in conversations
+  const peopleResults = query
+    ? SEEDED_CONTACTS.filter((name) => {
+        if (!name.toLowerCase().includes(query)) return false;
+        // Show if they don't match an existing visible conversation
+        return !conversations.some((c) => c.type === "dm" && c.name === name && c.name.toLowerCase().includes(query));
+      })
+    : [];
+
+  const noResults = query && filteredDm.length === 0 && filteredGroups.length === 0 && peopleResults.length === 0;
 
   return (
     <>
       <ToastOverlay toast={toast} onDismiss={dismissToast} />
+
+      {/* Call overlays */}
+      {callState?.active && callState.type === "voice" && (
+        <VoiceCallOverlay callState={callState} onUpdate={updateCall} onEnd={endCall} />
+      )}
+      {callState?.active && (callState.type === "video" || callState.type === "screen") && (
+        <VideoCallOverlay callState={callState} onUpdate={updateCall} onEnd={endCall} />
+      )}
+
+      {/* Incoming call notification */}
+      {incomingCall && (
+        <IncomingCallBanner
+          callerName={incomingCall}
+          onAccept={() => { setIncomingCall(null); startCall("video"); }}
+          onDecline={() => setIncomingCall(null)}
+        />
+      )}
 
       <div className="flex h-[calc(100vh-var(--topbar-height,56px))] overflow-hidden">
         {/* ─── Panel 1: Conversation List ─── */}
@@ -519,6 +1207,8 @@ export default function Talk() {
             <Input
               placeholder="Search conversations..."
               className="flex-1 h-9 rounded-lg bg-muted border-0"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
             <Tooltip>
               <TooltipTrigger asChild>
@@ -538,29 +1228,67 @@ export default function Talk() {
             </TabsList>
 
             <TabsContent value="dm" className="flex-1 overflow-y-auto mt-1">
-              <div className="space-y-0.5">
-                {dmConversations.map((c) => (
-                  <ConversationRow
-                    key={c.id}
-                    conversation={c}
-                    isActive={c.id === activeConversationId}
-                    onClick={() => handleSelectConversation(c.id)}
-                  />
-                ))}
-              </div>
+              {noResults ? (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Search size={32} className="text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground text-center">No results for "{searchQuery}"</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-0.5">
+                    {filteredDm.map((c) => (
+                      <ConversationRow
+                        key={c.id}
+                        conversation={c}
+                        isActive={c.id === activeConversationId}
+                        onClick={() => handleSelectConversation(c.id)}
+                      />
+                    ))}
+                  </div>
+                  {peopleResults.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 px-3 pt-3 pb-1">
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">People</span>
+                        <div className="flex-1 h-px bg-border" />
+                      </div>
+                      <div className="space-y-0.5">
+                        {peopleResults.map((name) => (
+                          <button
+                            key={name}
+                            onClick={() => handleStartDm(name)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mx-1 text-left hover:bg-muted/60 transition-colors"
+                          >
+                            <Avatar name={name} size={38} />
+                            <span className="text-sm font-medium flex-1 truncate">{name}</span>
+                            <ChevronRight size={14} className="text-muted-foreground" />
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </TabsContent>
 
             <TabsContent value="groups" className="flex-1 overflow-y-auto mt-1">
-              <div className="space-y-0.5">
-                {groupConversations.map((c) => (
-                  <ConversationRow
-                    key={c.id}
-                    conversation={c}
-                    isActive={c.id === activeConversationId}
-                    onClick={() => handleSelectConversation(c.id)}
-                  />
-                ))}
-              </div>
+              {query && filteredGroups.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Search size={32} className="text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground text-center">No results for "{searchQuery}"</p>
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  {filteredGroups.map((c) => (
+                    <ConversationRow
+                      key={c.id}
+                      conversation={c}
+                      isActive={c.id === activeConversationId}
+                      onClick={() => handleSelectConversation(c.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>
@@ -593,35 +1321,118 @@ export default function Talk() {
               </div>
 
               <div className="flex items-center gap-1">
-                {[
-                  { icon: Phone, label: "Voice call", action: () => showToast("Starting voice call...", <Button size="icon" variant="destructive" className="h-6 w-6" onClick={dismissToast}><PhoneOff size={12} /></Button>) },
-                  { icon: Video, label: "Video call", action: () => showToast("Starting video call...", <Button size="icon" variant="destructive" className="h-6 w-6" onClick={dismissToast}><PhoneOff size={12} /></Button>) },
-                  { icon: MonitorUp, label: "Screen share", action: () => showToast("Starting screen share...") },
-                  { icon: Search, label: "Search in chat", action: () => setShowSearch((s) => !s) },
-                  { icon: PanelRight, label: "Info", action: () => setShowInfoPanel((s) => !s) },
-                ].map(({ icon: Icon, label, action }) => (
-                  <Tooltip key={label}>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={action}
-                        className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      >
-                        <Icon size={18} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>{label}</TooltipContent>
-                  </Tooltip>
-                ))}
+                {/* Voice call */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => callState?.active ? endCall() : startCall("voice")}
+                      className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                        callState?.active && callState.type === "voice"
+                          ? "bg-red-100 text-red-600 dark:bg-red-900/30"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      )}
+                    >
+                      <Phone size={18} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>{callState?.active ? "End call" : "Voice call"}</TooltipContent>
+                </Tooltip>
+
+                {/* Video call */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => callState?.active && callState.type === "video" ? endCall() : startCall("video")}
+                      className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                        callState?.active && callState.type === "video"
+                          ? "bg-red-100 text-red-600 dark:bg-red-900/30"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      )}
+                    >
+                      <Video size={18} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>{callState?.active && callState.type === "video" ? "End call" : "Video call"}</TooltipContent>
+                </Tooltip>
+
+                {/* Screen share */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => callState?.active ? updateCall({ isScreenSharing: !callState.isScreenSharing }) : startCall("screen")}
+                      className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                        callState?.isScreenSharing
+                          ? "bg-green-100 text-green-600 dark:bg-green-900/30"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      )}
+                    >
+                      <MonitorUp size={18} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Screen share</TooltipContent>
+                </Tooltip>
+
+                {/* Simulate incoming call */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setIncomingCall(activeConversation.name)}
+                      className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <PhoneIncoming size={18} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Simulate incoming call</TooltipContent>
+                </Tooltip>
+
+                {/* Search */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowSearch((s) => !s)}
+                      className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                        showSearch ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      )}
+                    >
+                      <Search size={18} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Search in chat</TooltipContent>
+                </Tooltip>
+
+                {/* Info panel */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowInfoPanel((s) => !s)}
+                      className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                        showInfoPanel ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      )}
+                    >
+                      <PanelRight size={18} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Info</TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
+            {/* Screen share banner */}
+            {callState?.isScreenSharing && (
+              <div className="bg-green-50 dark:bg-green-950/30 border-b border-green-200 dark:border-green-800 px-4 py-2 flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                <MonitorUp size={14} />
+                Piyush Sharma is sharing their screen
+                <Button variant="ghost" size="sm" className="ml-auto text-green-700 dark:text-green-400">View</Button>
+              </div>
+            )}
+
             {/* Search Bar (collapsible) */}
-            <div
-              className={cn(
-                "overflow-hidden transition-all duration-200",
-                showSearch ? "max-h-14" : "max-h-0"
-              )}
-            >
+            <div className={cn("overflow-hidden transition-all duration-200", showSearch ? "max-h-14" : "max-h-0")}>
               <div className="px-4 py-2 border-b bg-muted/30">
                 <Input placeholder="Search in conversation..." className="h-8 text-sm" />
               </div>
@@ -740,38 +1551,114 @@ export default function Talk() {
 
         {/* ─── Panel 3: Info Panel ─── */}
         {showInfoPanel && activeConversation && (
-          <InfoPanel conversation={activeConversation} />
+          <InfoPanel
+            conversation={activeConversation}
+            onMuteToggle={handleMuteToggle}
+            onLeaveGroup={handleLeaveGroup}
+            onDeleteGroup={handleDeleteGroup}
+            onTransferAdmin={handleTransferAdmin}
+            showToast={showToast}
+          />
         )}
       </div>
 
       {/* New Conversation Dialog */}
-      <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
+      <Dialog open={newChatOpen} onOpenChange={(open) => {
+        setNewChatOpen(open);
+        if (!open) { setNewGroupTab("dm"); setNewGroupName(""); setNewGroupMembers([]); setNewDmSearch(""); }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New conversation</DialogTitle>
           </DialogHeader>
-          <Input placeholder="Search people..." className="mb-3" />
-          <div className="space-y-1">
-            {["Rohan Mehra", "Priya Kapoor", "Arjun Singh"].map((name) => (
-              <button
-                key={name}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted transition-colors"
-                onClick={() => {
-                  showToast("Conversation feature coming soon");
-                  setNewChatOpen(false);
-                }}
+          <Tabs value={newGroupTab} onValueChange={(v) => setNewGroupTab(v as "dm" | "group")}>
+            <TabsList className="w-full mb-3">
+              <TabsTrigger value="dm" className="flex-1">Direct message</TabsTrigger>
+              <TabsTrigger value="group" className="flex-1">New group</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="dm">
+              <Input
+                placeholder="Search people..."
+                className="mb-3"
+                value={newDmSearch}
+                onChange={(e) => setNewDmSearch(e.target.value)}
+              />
+              <div className="space-y-1 max-h-[300px] overflow-y-auto">
+                {SEEDED_CONTACTS
+                  .filter((n) => !newDmSearch || n.toLowerCase().includes(newDmSearch.toLowerCase()))
+                  .map((name) => (
+                    <button
+                      key={name}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted transition-colors"
+                      onClick={() => handleStartDm(name)}
+                    >
+                      <Avatar name={name} size={36} />
+                      <span className="text-sm font-medium">{name}</span>
+                    </button>
+                  ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="group">
+              <Input
+                placeholder="Group name"
+                className="mb-3"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground mb-2">Add members (at least 1)</p>
+              <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                {SEEDED_CONTACTS.map((name) => {
+                  const isSelected = newGroupMembers.includes(name);
+                  return (
+                    <button
+                      key={name}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
+                        isSelected ? "bg-accent" : "hover:bg-muted"
+                      )}
+                      onClick={() => {
+                        setNewGroupMembers((prev) =>
+                          isSelected ? prev.filter((n) => n !== name) : [...prev, name]
+                        );
+                      }}
+                    >
+                      <div className={cn(
+                        "h-4 w-4 rounded border flex items-center justify-center",
+                        isSelected ? "bg-primary border-primary" : "border-muted-foreground"
+                      )}>
+                        {isSelected && <span className="text-white text-[10px]">✓</span>}
+                      </div>
+                      <Avatar name={name} size={32} />
+                      <span className="text-sm font-medium">{name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {newGroupMembers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {newGroupMembers.map((name) => (
+                    <span key={name} className="inline-flex items-center gap-1 bg-muted rounded-full px-2.5 py-1 text-xs font-medium">
+                      <Avatar name={name} size={16} />
+                      {name.split(" ")[0]}
+                      <button onClick={() => setNewGroupMembers((prev) => prev.filter((n) => n !== name))} className="hover:opacity-70">
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <Button
+                className="w-full mt-3"
+                disabled={!newGroupName.trim() || newGroupMembers.length === 0}
+                onClick={handleCreateGroup}
               >
-                <Avatar name={name} size={36} />
-                <span className="text-sm font-medium">{name}</span>
-              </button>
-            ))}
-          </div>
-          <Button className="w-full mt-2" onClick={() => {
-            showToast("Conversation feature coming soon");
-            setNewChatOpen(false);
-          }}>
-            Create
-          </Button>
+                Create group
+              </Button>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </>

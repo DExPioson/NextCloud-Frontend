@@ -48,7 +48,10 @@ sqlite.exec(`
     last_message TEXT,
     last_message_at TEXT,
     unread_count INTEGER DEFAULT 0,
-    members TEXT
+    members TEXT,
+    is_muted INTEGER DEFAULT 0,
+    admin_id INTEGER,
+    created_by INTEGER
   );
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,6 +142,11 @@ sqlite.exec(`
   );
 `);
 
+// ─── Migrations for existing DBs ───────────────────────────
+try { sqlite.exec("ALTER TABLE conversations ADD COLUMN is_muted INTEGER DEFAULT 0"); } catch (_e) { /* already exists */ }
+try { sqlite.exec("ALTER TABLE conversations ADD COLUMN admin_id INTEGER"); } catch (_e) { /* already exists */ }
+try { sqlite.exec("ALTER TABLE conversations ADD COLUMN created_by INTEGER"); } catch (_e) { /* already exists */ }
+
 // ─── Seed Data ──────────────────────────────────────────────
 function seed() {
   const existing = db.select().from(users).all();
@@ -187,8 +195,8 @@ function seed() {
     { name: "Rohan Mehra", type: "dm", lastMessage: "Can you share the design files?", lastMessageAt: "2026-04-06T11:30:00Z", unreadCount: 2, members: JSON.stringify(["Piyush Sharma", "Rohan Mehra"]) },
     { name: "Priya Kapoor", type: "dm", lastMessage: "Meeting at 3pm confirmed ✓", lastMessageAt: "2026-04-06T09:15:00Z", unreadCount: 0, members: JSON.stringify(["Piyush Sharma", "Priya Kapoor"]) },
     { name: "Arjun Singh", type: "dm", lastMessage: "Check the API contract doc", lastMessageAt: "2026-04-06T10:45:00Z", unreadCount: 1, members: JSON.stringify(["Piyush Sharma", "Arjun Singh"]) },
-    { name: "Product Team", type: "group", lastMessage: "Sprint planning tomorrow 10am", lastMessageAt: "2026-04-06T12:00:00Z", unreadCount: 3, members: JSON.stringify(["Piyush Sharma", "Rohan Mehra", "Priya Kapoor", "Arjun Singh"]) },
-    { name: "HomeServer Admins", type: "group", lastMessage: "Nextcloud updated to 29.0.2", lastMessageAt: "2026-04-05T22:00:00Z", unreadCount: 0, members: JSON.stringify(["Piyush Sharma", "Vikram Patel", "Deepak Malhotra"]) },
+    { name: "Product Team", type: "group", lastMessage: "Sprint planning tomorrow 10am", lastMessageAt: "2026-04-06T12:00:00Z", unreadCount: 3, members: JSON.stringify(["Piyush Sharma", "Rohan Mehra", "Priya Kapoor", "Arjun Singh"]), adminId: 1, createdBy: 1 },
+    { name: "HomeServer Admins", type: "group", lastMessage: "Nextcloud updated to 29.0.2", lastMessageAt: "2026-04-05T22:00:00Z", unreadCount: 0, members: JSON.stringify(["Piyush Sharma", "Vikram Patel", "Deepak Malhotra"]), adminId: 1, createdBy: 1 },
   ]).run();
 
   // Messages — 8 per conversation
@@ -412,6 +420,7 @@ export interface IStorage {
   getConversation(id: number): Conversation | undefined;
   createConversation(conv: { name: string; type: string; members?: string }): Conversation;
   updateConversation(id: number, data: Partial<Conversation>): Conversation | undefined;
+  deleteConversation(id: number): void;
   // Messages
   getMessages(conversationId: number): Message[];
   createMessage(msg: { conversationId: number; senderId: number; senderName: string; content: string; sentAt: string }): Message;
@@ -488,6 +497,10 @@ class DatabaseStorage implements IStorage {
   updateConversation(id: number, data: Partial<Conversation>) {
     db.update(conversations).set(data).where(eq(conversations.id, id)).run();
     return this.getConversation(id);
+  }
+  deleteConversation(id: number) {
+    db.delete(messages).where(eq(messages.conversationId, id)).run();
+    db.delete(conversations).where(eq(conversations.id, id)).run();
   }
 
   getMessages(conversationId: number) { return db.select().from(messages).where(eq(messages.conversationId, conversationId)).all(); }
