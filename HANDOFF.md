@@ -1,17 +1,23 @@
 # CloudSpace LLM Handoff Document
 
 > **Purpose**: Context transfer for an LLM to continue building CloudSpace from Prompt #09 onward.
-> **Last updated**: 2026-04-08 | **Last completed prompt**: #08 (Polish Pass)
+> **Last updated**: 2026-04-09 | **Last completed prompt**: #08 (Polish Pass) + NC Adapter Integration + Playwright E2E Suite
+> **BREAKING CHANGE**: The mock Express/SQLite backend has been **replaced** with a live Nextcloud API adapter. All data now comes from a real Nextcloud 28 instance.
 
 ---
 
 ## 1. Project Overview
 
-**CloudSpace** is a modern React frontend redesign sandbox for a self-hosted Nextcloud instance. It's a **UI-only prototype** with a mock Express/SQLite backend. No real Nextcloud APIs are used. The project is built across 9 sequential numbered prompts, each adding specific screens.
+**CloudSpace** is a modern React frontend redesign for a self-hosted Nextcloud instance. It was originally a UI-only prototype with a mock Express/SQLite backend. As of the latest integration work, the backend is now a **Nextcloud API adapter** — `server/index.ts` proxies every API call to a real Nextcloud instance running at `NC_BASE_URL` (default `http://localhost:8080`).
 
-**Repository**: `https://github.com/DExPioson/Gaurav-NextCloud`
-**Owner**: Piyush Sharma (working with Gaurav)
-**Local path**: `C:\Users\admin\Desktop\NextCloud With Gaurav\cloudspace\`
+The frontend code (`client/src/`) is **completely unchanged** from Prompt #08. The API contract (`{ data: ... }` envelope) is preserved. The adapter translates between Nextcloud's various API formats (OCS, WebDAV, CalDAV, CardDAV, REST) and the CloudSpace schema types.
+
+**Repository**: `https://github.com/DExPioson/NextCloud-Frontend`
+**Branch**: `staging`
+**Owner**: Piyush Sharma (working with Gaurav — GitHub: grvsmalik)
+**Local paths**:
+- Frontend: `G:\cloudspace-frontend\`
+- Backend (Nextcloud Docker): `G:\cloudspace-backend\` (separate folder, not a git submodule)
 
 ---
 
@@ -25,26 +31,33 @@
 | Components | shadcn/ui | Latest | Radix UI primitives, copy-pasted into `components/ui/` |
 | Routing | wouter | 3.9.0 | Hash-based via `useHashLocation` from `wouter/use-hash-location` |
 | Data Fetching | TanStack Query | 5.96.2 | `staleTime: 30s`, `gcTime: 5min`, `retry: 1` |
-| ORM | Drizzle ORM | 0.45.2 | With `better-sqlite3` |
 | Server | Express | 5.2.1 | Port 5000, Vite proxies `/api` to it |
+| Session | express-session | 1.19.0 | SQLite-backed via connect-sqlite3, stored in `sessions.db` |
+| NC HTTP Client | node fetch | built-in | Custom adapter in `server/nc-adapter.ts` |
+| XML Parsing | xml2js | 0.6.2 | For WebDAV/OCS XML responses |
+| iCal/vCard | ical.js | 2.2.1 | CalDAV event and CardDAV contact parsing |
 | DnD | @hello-pangea/dnd | 18.0.1 | Used in Deck kanban |
 | Icons | lucide-react | 1.7.0 | |
 | Date utils | date-fns | 4.1.0 | |
+| E2E Testing | Playwright | 1.59.1 | 81 tests, Chromium only |
 | Variants | class-variance-authority | 0.7.1 | For component variant styling |
+
+**Removed from active use** (still in package.json but no longer functional):
+- Drizzle ORM / better-sqlite3 — was the mock DB, now `storage.ts` is a stub with caches only
+- drizzle-zod — insert schemas still exported from `shared/schema.ts` but not used by the adapter
 
 ---
 
 ## 3. Project Structure
 
 ```
-cloudspace/
+cloudspace-frontend/
 ├── client/
 │   ├── index.html
 │   └── src/
 │       ├── main.tsx                  # Entry point, renders <App />
 │       ├── App.tsx                   # Root: theme, QueryClient, hash router, AppShell
 │       ├── index.css                 # Design tokens (HSL CSS vars), scrollbar, animations
-│       ├── assets/                   # hero.png, react.svg, vite.svg
 │       ├── components/
 │       │   ├── layout/
 │       │   │   ├── CloudSpaceLogo.tsx
@@ -52,16 +65,12 @@ cloudspace/
 │       │   │   ├── Sidebar.tsx       # Nav sidebar with collapse toggle, unread badges
 │       │   │   └── TopBar.tsx        # Top bar with command palette, notification popover, user dropdown
 │       │   └── ui/                   # shadcn/ui components (18 total)
-│       │       ├── alert.tsx, badge.tsx, button.tsx, card.tsx, checkbox.tsx
-│       │       ├── dialog.tsx, dropdown-menu.tsx, input.tsx, label.tsx
-│       │       ├── popover.tsx, select.tsx, separator.tsx, skeleton.tsx
-│       │       ├── slider.tsx, switch.tsx, tabs.tsx, textarea.tsx, tooltip.tsx
 │       ├── lib/
 │       │   ├── api.ts                # apiRequest(method, url, body?) fetch wrapper
 │       │   ├── dateUtils.ts          # formatRelative, formatEventTime, formatEventDate
 │       │   └── utils.ts              # cn(), getAvatarColor(), getInitials()
 │       └── pages/
-│           ├── Login.tsx             # Login form (piyush@cloudspace.home / cloudspace)
+│           ├── Login.tsx             # Login form (piyush@cloudspace.home / cloudspace123)
 │           ├── Dashboard.tsx         # 5 widgets: storage ring, recent files, calendar, talk, activity
 │           ├── Files.tsx             # File browser with breadcrumbs, grid/list, CRUD
 │           ├── Talk.tsx              # 3-panel chat: conversation list, messages, info panel
@@ -74,13 +83,37 @@ cloudspace/
 │           ├── Media.tsx             # Photo gallery with lightbox, albums, multi-select
 │           └── Settings.tsx          # Multi-section settings: profile, security, appearance, storage, etc.
 ├── server/
-│   ├── index.ts                      # Express API server (all routes)
-│   └── storage.ts                    # DatabaseStorage class, table creates, seed data
+│   ├── index.ts                      # Express API server — Nextcloud adapter (856 lines)
+│   ├── nc-adapter.ts                 # Low-level NC HTTP client: OCS, WebDAV, CalDAV, CardDAV helpers
+│   ├── mappers.ts                    # Pure functions: NC API responses → CloudSpace schema types
+│   └── storage.ts                    # Stub: in-memory caches (cardLookup, conversationTokens, etc.)
 ├── shared/
-│   └── schema.ts                     # Drizzle table definitions + Zod insert schemas
+│   └── schema.ts                     # TypeScript types + Drizzle table definitions (types still used)
+├── e2e/                              # Playwright test specs (14 files, 1152 lines)
+│   ├── helpers.ts                    # login(), navigateTo(), expectToast(), waitForData()
+│   ├── 01-auth.spec.ts               # Login page, failed/success login, sign out
+│   ├── 02-layout.spec.ts             # Sidebar nav, collapse, badges, command palette, dark mode
+│   ├── 03-dashboard.spec.ts          # Widget loading, storage ring, recent files
+│   ├── 04-files.spec.ts              # File browser, grid/list, folder nav, create folder
+│   ├── 05-talk.spec.ts               # Conversations, messages, send, info panel, calls, groups
+│   ├── 06-calendar.spec.ts           # Month view, view switching, navigation, event CRUD
+│   ├── 07-notes.spec.ts              # Notes list, select/read, create, delete, pin/unpin
+│   ├── 08-contacts.spec.ts           # Contact list, search, detail panel, create, delete
+│   ├── 09-deck.spec.ts               # Board list, stacks, card modal, create/delete cards
+│   ├── 10-mail.spec.ts               # Mail folders, inbox, read, star, search, compose, delete
+│   ├── 11-activity.spec.ts           # Activity feed, filter tabs, search, mark all read
+│   ├── 12-media.spec.ts              # Gallery, albums, lightbox, multi-select, list view, upload
+│   ├── 13-settings.spec.ts           # All 7 settings sections
+│   └── 14-theme-persistence.spec.ts  # Dark mode + sidebar collapse persist across reload/nav
+├── playwright/
+│   ├── global-setup.ts               # Logs in via API, saves session to .auth/session.json
+│   ├── .auth/                        # Session state (gitignored)
+│   └── KNOWN_ISSUES.md               # Notes app dependency documentation
+├── playwright.config.ts              # globalSetup, storageState, Chromium-only
+├── .env                              # NC_BASE_URL, SESSION_SECRET, NODE_TLS_REJECT_UNAUTHORIZED
 ├── HANDOFF.md                        # This file
 ├── package.json
-├── vite.config.ts                    # Alias: @/ -> client/src/, @shared -> shared/
+├── vite.config.ts                    # Alias: @/ -> client/src/, @shared -> shared/, proxy /api → :5000
 ├── tsconfig.json, tsconfig.app.json, tsconfig.node.json
 ├── tailwind.config.ts
 ├── postcss.config.js
@@ -97,10 +130,32 @@ cloudspace/
 - `/login` is outside the `AppShell`; all other routes are inside it
 
 ### Data Flow
-- All API calls return `{ data: ... }` envelope
+- All API calls return `{ data: ... }` envelope — **this contract is unchanged**
 - Pages use `useQuery` with queryKey = `["/api/endpoint"]`
 - Mutations use `useMutation` + `queryClient.invalidateQueries()`
 - Optimistic updates used in Talk (messages) and Deck (card moves)
+- The Express server acts as a transparent proxy — it receives CloudSpace API calls, translates them to NC API calls, maps the responses back to CloudSpace schema types
+
+### Adapter Architecture (server/)
+```
+Browser → Vite (:5173) → /api proxy → Express (:5000) → Nextcloud (:8080)
+                                           │
+                                    nc-adapter.ts (HTTP client)
+                                    mappers.ts (response mapping)
+                                    storage.ts (in-memory caches)
+```
+
+The adapter uses three NC API families:
+1. **OCS API** — User info, Talk/Spreed, Activity (JSON responses via `?format=json`)
+2. **WebDAV/CalDAV/CardDAV** — Files, Calendar events, Contacts (XML responses parsed by xml2js/ical.js)
+3. **REST API** — Notes, Deck, Mail (native JSON endpoints)
+
+### Session Management
+- Login: `POST /api/auth/login` extracts username from email (`piyush@cloudspace.home` → `piyush`)
+- Authenticates against NC OCS: `GET /ocs/v2.php/cloud/users/{username}`
+- Generates an app password via `GET /ocs/v2.php/core/getapppassword` (falls back to original password)
+- Stores `{ username, appPassword }` in `express-session` backed by SQLite (`sessions.db`)
+- All subsequent requests use Basic auth with the app password
 
 ### Styling
 - HSL CSS custom properties in `:root` and `.dark` (see `index.css`)
@@ -128,7 +183,7 @@ function showToast(msg: string) {
 
 ---
 
-## 5. Completed Screens (Prompts #01–#06)
+## 5. Completed Screens (Prompts #01–#08)
 
 | # | Prompt | Route | Screen | Status |
 |---|--------|-------|--------|--------|
@@ -141,248 +196,179 @@ function showToast(msg: string) {
 | 07 | Media + Settings | `/media`, `/settings` | Photo gallery with lightbox; multi-section settings page | Done |
 | 08 | Polish Pass | All | Command palette, notifications, user dropdown, sidebar collapse, animations | Done |
 
-### Prompt #06 Details (Mail + Activity)
-
-**Mail page** (`Mail.tsx`, ~480 lines):
-- 3-panel layout: folder list (200px) + message list (320px) + reading pane (flex-1)
-- Folder list: Inbox (unread badge), Starred, Sent, Drafts (count badge), Spam, Trash + Labels (Work/Personal/Finance with colored dots) + storage indicator bar
-- Message list: sender avatars (getAvatarColor), unread dot indicator, bold text for unread, attachment/star icons, search, sort (Newest/Oldest/Sender/Unread), bulk select with checkboxes
-- Reading pane: full email header (avatar, sender, date, To), attachment chips, action toolbar (Reply/Reply All/Forward/Star toggle/Move to folder/Delete/Print), email body (whitespace-pre-wrap, max-w-prose), inline reply form
-- Compose dialog: recipient chip input with contact autocomplete from `/api/contacts`, Cc/Bcc toggle, subject, body textarea, Send + Save Draft buttons
-- Clicking email calls `GET /api/emails/:id` which auto-marks as read; invalidates counts
-
-**Activity page** (`Activity.tsx`, ~230 lines):
-- Stats bar: 4 cards (events today, files changed, new shares, unread)
-- Filter tabs (shadcn Tabs): All/Files/Sharing/Comments/System/Talk with unread count badges per type
-- Activity feed grouped by date: Today/Yesterday/This Week/Earlier with sticky backdrop-blur headers
-- Each item: unread dot, type-colored icon circle (file=blue, share=green, comment=purple, system=slate, talk=indigo), actor inline avatar, description, subject (primary color), timestamp
-- Hover actions: mark read/unread (Eye/EyeOff), open related (ExternalLink)
-- Search (client-side on description/actor/subject) + "Mark all read" button
-
-**Sidebar updates**: Mail and Activity nav items now show unread count badges (same style as Talk). Uses separate `useQuery` calls with `staleTime: 30_000`. Note: `Activity` type from schema imported as `ActivityType` to avoid conflict with lucide `Activity` icon.
-
-### Prompt #07 Details (Media + Settings)
-
-**Media page** (`Media.tsx`, ~320 lines):
-- Two-panel layout: album sidebar (220px) + main gallery area (flex-1)
-- Left panel: 5 albums (All Photos/Screenshots/Camera Roll/Favourites/Shared) with counts, 4 filter items (Videos/Favourites/Recently added/Trash), Upload button at bottom
-- Mock data: 24 photos from `picsum.photos/seed/photoN/800/600`, 5 albums — no DB table needed
-- Gallery toolbar: album name, photo count, sort dropdown (Newest/Oldest/Name/Size), view toggle (large grid/small grid/list), select mode button
-- Photo grid grouped by month with month headers; each tile has hover overlay with filename, favourite heart indicator
-- Multi-select mode: checkbox overlay on each photo, selection bar with Select all/Download/Favourite/Move/Delete/Cancel actions
-- List view: table with thumbnail, filename, size, date, album, action buttons
-- Lightbox: full-screen overlay (z-50, bg-black/95) with top bar (filename, size, date), action buttons (favourite/download/share/info/close), prev/next arrows, main image, thumbnail strip at bottom
-- Keyboard navigation: ArrowLeft/ArrowRight/Escape via `useEffect` + `window.addEventListener('keydown')`
-- Upload dialog: drag-drop area with dashed border, upload cloud icon, Browse files button → toast
-
-**Settings page** (`Settings.tsx`, ~520 lines):
-- Two-panel layout: settings nav (220px) + content area (flex-1, max-w-2xl centered)
-- Left nav: 3 groups (Account: Profile/Security/Notifications; App: Appearance/Storage/Connected Apps; Admin: About CloudSpace)
-- 7 sections rendered based on `activeSection` state:
-  1. **Profile**: Avatar (80px circle, initials "PS"), form fields (name, email disabled with lock icon, username with @ prefix, bio with 160 char counter, language select, timezone select), Save/Discard buttons, PATCH /api/user on save
-  2. **Security**: Change password form with strength indicator (weak=red/medium=amber/strong=green), 2FA toggle with TOTP setup dialog (mock QR grid, manual code `JBSWY3DPEHPK3PXP`, 6-digit verify input), active sessions list (3 devices with Laptop/Smartphone icons, "This device" badge, Revoke buttons)
-  3. **Notifications**: Two-column toggle grid — email notifications (6 toggles) + in-app notifications (6 toggles), each with label + description + Switch
-  4. **Appearance**: Theme cards (Light/Dark/System) with mini preview mockups + radio dot, 6 accent color swatches (Indigo/Violet/Rose/Emerald/Amber/Sky) that update `--primary` CSS var live, font size slider (12-18px) with live preview text, compact mode toggle
-  5. **Storage**: Quota card (18.4 GB / 50 GB, 36.8% progress bar), usage breakdown (Files 12.1GB/Mail 3.2GB/Talk 1.8GB/Media 0.9GB/Notes 0.2GB/Other 0.2GB) with colored bars, action buttons (Empty Trash/Download all data/Upgrade storage)
-  6. **Connected Apps**: OAuth apps table (4 mock apps: Nextcloud Talk Desktop, Calendar Sync iOS, Thunderbird, CloudSpace Mobile), Revoke with confirm dialog, "Authorize new app" button
-  7. **About**: CloudSpace logo, version info table (Frontend 0.1.0, Build Apr 2026, NC 29.0.2, stack), GitHub link, tagline
-
-**Backend changes**:
-- Added `PATCH /api/user` route to update user profile (name, email, avatar fields)
-- Added `updateUser(id, data)` method to `IStorage` interface and `DatabaseStorage` class
-
-**New UI component**: `slider.tsx` — Radix UI Slider primitive (`@radix-ui/react-slider` installed), standard shadcn/ui pattern
-
-### Prompt #08 Details (Polish Pass)
-
-Cross-app polish pass implementing the most impactful UX improvements:
-
-**Command Palette** (`CommandPalette.tsx`, new file):
-- Dialog-based palette opened via Cmd+K or clicking the search bar in TopBar
-- Results grouped into: Quick Actions (New note, Compose email, New event, Upload file), Navigation (all 11 nav items), Files (5 mock results), Contacts (4 mock results)
-- Full keyboard navigation: ArrowUp/Down to navigate, Enter to select, Escape to close
-- Client-side search filtering across all result types
-- Uses `hideClose` prop on DialogContent to hide the X button
-
-**TopBar rewrite** (`TopBar.tsx`):
-- Search bar is now a clickable button that opens the CommandPalette
-- Notification bell: Popover with 4 hardcoded notifications (FileUp blue, MessageSquare indigo, CalendarDays green, UserPlus purple), "Mark all read" button, "View all activity" link
-- User avatar dropdown (DropdownMenu): Profile → settings, Appearance → `/#/settings?section=appearance`, Keyboard shortcuts → Dialog with 8 shortcuts, Sign out → login page + toast
-- Removed separate Settings gear icon (user dropdown replaces it)
-
-**Sidebar enhancements** (`Sidebar.tsx`):
-- Added `onToggle` callback prop for collapse toggle
-- Collapse toggle button at bottom with PanelLeftClose/PanelLeftOpen icons
-- Badge pulse animation (`animate-badge-pulse`) on unread count badges
-
-**Dashboard** (`Dashboard.tsx`):
-- Time-based greeting with emojis (sunrise morning, sun afternoon, moon evening)
-
-**Deck** (`Deck.tsx`):
-- Enhanced drag ghost: `shadow-2xl ring-2 ring-primary/30 rotate-2 scale-105` during drag
-
-**Settings** (`Settings.tsx`):
-- Unsaved changes banner: sticky amber banner with "Save changes" / "Discard" when profile form is dirty
-
-**App.tsx updates**:
-- Removed StubPage component (all routes now have live components)
-- Auto-collapse sidebar only at <768px (was <1024px)
-- Added `toggleSidebar` callback passed to Sidebar
-
-**UI component changes**:
-- `dialog.tsx`: Added `hideClose` prop to DialogContent
-- `dropdown-menu.tsx`: Added `DropdownMenuLabel` component + export
-
-**Tailwind config**:
-- Added `badge-pulse` keyframes animation (opacity 1 → 0.7 → 1, 2s infinite)
-
-### Talk Page Audit
-
-Major overhaul of Talk.tsx (~1050 lines) implementing 7 fixes:
-
-**Fix 1 — Search**: Conversation list search input filters DMs and groups by name/lastMessage. When query matches a contact not in an existing conversation, a "People" section appears below with clickable entries that start a new DM.
-
-**Fix 2 — Mute notifications**: Functional toggle per conversation (persisted via `PATCH /api/conversations/:id/mute`). BellOff icon shown next to muted conversation names. Toggle available in info panel for both DMs and groups.
-
-**Fix 3 — Leave group**: "Leave group" button in info panel opens confirm dialog. On confirm, calls `DELETE /api/conversations/:id/members/me`, removes conversation, selects next available.
-
-**Fix 4 — Group admin system**: `adminId` and `createdBy` fields added to conversations schema. Admin badge shown next to admin member in info panel. Admin-only section with: Add member (dialog with contact list), Transfer admin (radio select from other members), Delete group (confirm dialog). Transfer updates `adminId` via `PATCH /api/conversations/:id/admin`.
-
-**Fix 5 — Call UI**: Full-screen overlays for voice, video, and screen share:
-- Voice call: centered avatar, duration timer, participant row (group), mute/speaker/dialpad/more controls, red end button
-- Video call: 2x2 grid (group) or main+PIP (DM), duration badge, control bar (mic/camera/screen share/more/end), screen share layout with "stop sharing" button
-- Speaking simulation: random participant highlighted with green ring every 3s
-- Incoming call banner: top-right card with Accept/Decline, auto-dismiss after 15s
-- "Simulate incoming call" button in toolbar (PhoneIncoming icon)
-
-**Fix 6 — Toolbar button states**: Voice/Video/Screen share buttons show active state (colored background) when in call. Search and Info panel buttons show pressed state (bg-muted) when toggled on.
-
-**Fix 7 — New group creation**: New conversation dialog has DM/Group tabs. Group tab: name input, member checklist with checkboxes, selected members shown as chips, "Create group" button. Creates via `POST /api/conversations` with adminId=1.
-
-**Schema changes**: `conversations` table gained `is_muted`, `admin_id`, `created_by` columns. `deleteConversation` method added to storage (cascading delete of messages).
-
-**Partially deferred to Prompt #09**:
-- Skeleton loaders audit (pages already have skeletons from initial builds)
-- Empty states audit (pages already have empty state UIs)
-- Responsive 768px mobile layout (Sheet component, useIsMobile hook)
-- Transition consistency pass
-- Some micro-interactions (file drag pulse, talk message slide-in)
-
 ---
 
-## 6. Remaining Screens (Prompts #09)
+## 6. Remaining Work: Prompt #09
 
 | # | Prompt | Route | Screen | Status |
 |---|--------|-------|--------|--------|
 | 09 | Final | All | Final QA, performance, accessibility, build + deploy | **Next** |
 
-The spec documents for all 9 prompts are at:
-`C:\Users\admin\Downloads\CLAUDE_CODE_PROMPT_01_SCAFFOLD.md` through `_09_*.md`
+All 12 screens are built, polished, and tested against live Nextcloud. What comes next:
+- Production build verification (`npm run build`)
+- Performance audit (bundle size, lazy loading)
+- Accessibility check
+- Deploy
 
 ---
 
-## 7. API Routes (Current State)
+## 7. API Routes — Nextcloud Mapping Reference
 
-All routes are in `server/index.ts`. Response format: `{ data: ... }`.
+All routes are in `server/index.ts`. Response format: `{ data: ... }`. Every route proxies to a real Nextcloud API endpoint.
 
-```
-POST /api/auth/login              -> { ok, user }
-GET  /api/user                    -> { data: User }
-PATCH /api/user                   -> { data: User }     (update profile: name, email, avatar)
-GET  /api/dashboard               -> { data: { recentFiles, upcomingEvents, unreadMessages, ... } }
+### Auth
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `POST /api/auth/login` | `GET /ocs/v2.php/cloud/users/{user}` + `GET /ocs/v2.php/core/getapppassword` | OCS |
+| `POST /api/auth/logout` | Session destroy (local only) | — |
 
-GET  /api/files?path=/            -> { data: File[] }
-GET  /api/files/:id               -> { data: File }
-POST /api/files                   -> { data: File }
-PATCH /api/files/:id              -> { data: File }
-DELETE /api/files/:id             -> { data: { success } }
+### User
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/user` | `GET /ocs/v2.php/cloud/users/{user}` | OCS |
+| `PATCH /api/user` | `POST /ocs/v2.php/cloud/users/{user}` (key/value pairs) | OCS |
 
-GET  /api/conversations           -> { data: Conversation[] }
-GET  /api/conversations/:id       -> { data: Conversation }
-POST /api/conversations           -> { data: Conversation }
-PATCH /api/conversations/:id/read -> { data: { success } }
-PATCH /api/conversations/:id/mute -> { data: { isMuted } }     (toggle mute)
-PATCH /api/conversations/:id/admin -> { data: Conversation }   (transfer admin)
-DELETE /api/conversations/:id/members/me -> { data: { success } } (leave group)
-DELETE /api/conversations/:id     -> { data: { success } }      (delete group)
-GET  /api/conversations/:id/messages -> { data: Message[] }
-POST /api/conversations/:id/messages -> { data: Message }
+### Dashboard
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/dashboard` | `PROPFIND /remote.php/dav/files/{user}/` + `GET /ocs/v2.php/cloud/users/{user}` | WebDAV + OCS |
 
-GET  /api/events                  -> { data: Event[] }
-GET  /api/events/:id              -> { data: Event }
-POST /api/events                  -> { data: Event }
-PATCH /api/events/:id             -> { data: Event }
-DELETE /api/events/:id            -> { data: { success } }
+### Files
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/files?path=/` | `PROPFIND /remote.php/dav/files/{user}{path}` (Depth: 1) | WebDAV |
+| `POST /api/files` (folder) | `MKCOL /remote.php/dav/files/{user}{path}/{name}` | WebDAV |
+| `POST /api/files` (file) | `PUT /remote.php/dav/files/{user}{path}/{name}` | WebDAV |
+| `PATCH /api/files/:id` | `MOVE (from → to)` | WebDAV |
+| `DELETE /api/files/:id` | `DELETE /remote.php/dav/files/{user}{path}` | WebDAV |
 
-GET  /api/notes                   -> { data: Note[] }
-GET  /api/notes/:id               -> { data: Note }
-POST /api/notes                   -> { data: Note }
-PATCH /api/notes/:id              -> { data: Note }
-DELETE /api/notes/:id             -> { data: { success } }
+### Talk / Conversations
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/conversations` | `GET /ocs/v2.php/apps/spreed/api/v4/room` | OCS |
+| `GET /api/conversations/:id` | `GET /ocs/v2.php/apps/spreed/api/v4/room/{token}` | OCS |
+| `POST /api/conversations` | `POST /ocs/v2.php/apps/spreed/api/v4/room` | OCS |
+| `PATCH .../read` | `POST /ocs/v2.php/apps/spreed/api/v4/chat/{token}/read` | OCS |
+| `PATCH .../mute` | `POST /ocs/v2.php/apps/spreed/api/v4/room/{token}/notify` | OCS |
+| `DELETE .../members/me` | `DELETE /ocs/v2.php/apps/spreed/api/v4/room/{token}/participants/self` | OCS |
+| `GET .../messages` | `GET /ocs/v2.php/apps/spreed/api/v4/chat/{token}` | OCS |
+| `POST .../messages` | `POST /ocs/v2.php/apps/spreed/api/v4/chat/{token}` | OCS |
 
-GET  /api/contacts                -> { data: Contact[] }  (sorted by name)
-GET  /api/contacts/:id            -> { data: Contact }
-POST /api/contacts                -> { data: Contact }
-PATCH /api/contacts/:id           -> { data: Contact }
-DELETE /api/contacts/:id          -> { data: { success } }
+**Important**: Talk uses conversation **tokens** (not numeric IDs) internally. The adapter maintains a `conversationTokens` Map in `storage.ts` to translate between CloudSpace numeric IDs and NC tokens.
 
-GET  /api/boards                  -> { data: Board[] }
-GET  /api/boards/:id              -> { data: { board, stacks: (Stack & { cards })[] } }
-POST /api/boards                  -> { data: Board }
-POST /api/boards/:id/stacks       -> { data: Stack }
-POST /api/boards/:boardId/stacks/:stackId/cards -> { data: Card }
-PATCH /api/cards/:id              -> { data: Card }
-DELETE /api/cards/:id             -> { data: { success } }
+### Calendar / Events
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/events` | `REPORT /remote.php/dav/calendars/{user}/personal/` (CalDAV query) | CalDAV |
+| `GET /api/events/:id` | Same REPORT, filter by hash ID | CalDAV |
+| `POST /api/events` | `PUT /remote.php/dav/calendars/{user}/personal/{uid}.ics` | CalDAV |
+| `PATCH /api/events/:id` | `PUT` on cached href | CalDAV |
+| `DELETE /api/events/:id` | `DELETE` on cached href | CalDAV |
 
-GET  /api/emails/counts           -> { data: { inbox, drafts, spam } }  (unread counts per folder)
-GET  /api/emails?folder=inbox     -> { data: Email[] }  (sorted by receivedAt desc)
-GET  /api/emails/:id              -> { data: Email }     (marks as read on fetch)
-POST /api/emails                  -> { data: Email }
-PATCH /api/emails/:id             -> { data: Email }     (isRead, isStarred, folder)
-DELETE /api/emails/:id            -> { data: { success } }
+Events are parsed from iCal using `ical.js`. The `eventHrefs` Map caches `event.id → CalDAV href` for update/delete.
 
-GET  /api/activity?limit=50&type=all -> { data: Activity[] }  (sorted by timestamp desc, type filter)
-PATCH /api/activity/:id/read      -> { data: { success } }
-POST /api/activity/read-all       -> { data: { success } }    (marks all as read)
-GET  /api/activities              -> { data: Activity[] }
-```
+### Notes
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/notes` | `GET /index.php/apps/notes/api/v1/notes` | REST |
+| `GET /api/notes/:id` | `GET /index.php/apps/notes/api/v1/notes/{id}` | REST |
+| `POST /api/notes` | `POST /index.php/apps/notes/api/v1/notes` | REST |
+| `PATCH /api/notes/:id` | `PUT /index.php/apps/notes/api/v1/notes/{id}` | REST |
+| `DELETE /api/notes/:id` | `DELETE /index.php/apps/notes/api/v1/notes/{id}` | REST |
 
-**Important**: `GET /api/emails/counts` is registered BEFORE `GET /api/emails/:id` in Express to avoid "counts" matching as an `:id` param.
+### Contacts
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/contacts` | `REPORT /remote.php/dav/addressbooks/users/{user}/contacts/` (CardDAV) | CardDAV |
+| `POST /api/contacts` | `PUT /remote.php/dav/addressbooks/users/{user}/contacts/{uid}.vcf` | CardDAV |
+| `PATCH /api/contacts/:id` | `PUT` on cached href | CardDAV |
+| `DELETE /api/contacts/:id` | `DELETE` on cached href | CardDAV |
+
+Contacts are parsed from vCard using `ical.js`. The `contactHrefs` Map caches `contact.id → CardDAV href`.
+
+### Deck (Kanban)
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/boards` | `GET /index.php/apps/deck/api/v1.0/boards` | REST |
+| `GET /api/boards/:id` | `GET .../boards/{id}` + `GET .../boards/{id}/stacks` | REST |
+| `POST /api/boards` | `POST /index.php/apps/deck/api/v1.0/boards` | REST |
+| `POST .../stacks` | `POST .../boards/{id}/stacks` | REST |
+| `POST .../cards` | `POST .../boards/{bid}/stacks/{sid}/cards` | REST |
+| `PATCH /api/cards/:id` | `PUT .../boards/{bid}/stacks/{sid}/cards/{id}` | REST |
+| `DELETE /api/cards/:id` | `DELETE .../boards/{bid}/stacks/{sid}/cards/{id}` | REST |
+
+The `cardLookup` Map caches `card.id → { boardId, stackId }` because Deck's REST API requires both board and stack IDs for card operations.
+
+### Mail
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/emails/counts` | (returns static `{ inbox: 0, drafts: 0, spam: 0 }`) | REST |
+| `GET /api/emails?folder=inbox` | `GET .../accounts/{aid}/mailboxes/{mid}/messages` | REST |
+| `GET /api/emails/:id` | `GET .../accounts/{aid}/messages/{id}` | REST |
+| `POST /api/emails` | `POST .../accounts/{aid}/send` | REST |
+| `PATCH /api/emails/:id` | `PUT .../messages/{id}/flag` | REST |
+| `DELETE /api/emails/:id` | `DELETE .../messages/{id}` | REST |
+
+**Important**: `GET /api/emails/counts` is registered BEFORE `GET /api/emails/:id` in Express to avoid "counts" matching as an `:id` param. The `ensureMailAccount()` helper auto-discovers the primary mail account and caches mailbox IDs on first request.
+
+### Activity
+| CloudSpace Route | NC API | Protocol |
+|------------------|--------|----------|
+| `GET /api/activity` | `GET /ocs/v2.php/apps/activity/api/v2/activity/all` | OCS |
+| `PATCH /api/activity/:id/read` | Local only (`activityReadState` Map) | — |
+| `POST /api/activity/read-all` | Local only | — |
+
+Activity read/unread state is tracked in-memory only — NC's Activity API has no read/unread concept.
 
 ---
 
-## 8. Database Schema (shared/schema.ts)
+## 8. Data Layer (Adapter + Caches)
 
-Tables defined with Drizzle ORM:
-- `users` — id, name, email, avatar, role, storageUsed, storageQuota
-- `files` — id, name, path, type, mimeType, size, modifiedAt, sharedWith, isFavourite, parentPath, ownerId
-- `conversations` — id, name, type (dm/group), avatar, lastMessage, lastMessageAt, unreadCount, members (JSON)
-- `messages` — id, conversationId, senderId, senderName, content, sentAt, reactions (JSON), replyToId
-- `events` — id, title, description, startAt, endAt, allDay, calendar, color, location
-- `notes` — id, title, content, tags (JSON), updatedAt, createdAt, isPinned
-- `contacts` — id, name, email, phone, company, group, avatar, tags (JSON)
-- `boards` — id, title, color
-- `stacks` — id, boardId, title, order
-- `cards` — id, stackId, boardId, title, description, dueDate, assignee, priority, labels (JSON), order
-- `emails` — id, folder, from, fromEmail, to, subject, preview, body, receivedAt, isRead, isStarred, hasAttachment
-- `activities` — id, type, actor, actorAvatar, description, subject, timestamp, isRead
+The old SQLite database (`dev.db`) and Drizzle ORM are **no longer used**. `storage.ts` is now a stub containing only in-memory caches:
 
-All have corresponding TypeScript types exported (`User`, `File`, `Contact`, etc.).
-Insert schemas via `drizzle-zod`: `insertUserSchema`, `insertFileSchema`, etc.
+| Cache | Type | Purpose |
+|-------|------|---------|
+| `cardLookup` | `Map<number, { boardId, stackId }>` | Deck card → board/stack mapping for update/delete |
+| `conversationTokens` | `Map<number, string>` | CloudSpace conversation ID → NC Talk room token |
+| `mailAccount` | `{ accountId, mailboxes: Map<string, number> }` | Primary mail account + folder→mailbox ID mapping |
+| `eventHrefs` | `Map<number, string>` | CloudSpace event ID → CalDAV href for update/delete |
+| `contactHrefs` | `Map<number, string>` | CloudSpace contact ID → CardDAV href for update/delete |
+| `activityReadState` | `Map<number, boolean>` | Activity read/unread state (local only) |
+
+**Critical**: These caches are **in-memory and volatile**. Restarting the Express server clears them. The first `GET` call after restart repopulates them. This means:
+- You must `GET /api/boards/:id` before you can `PATCH/DELETE /api/cards/:id`
+- You must `GET /api/conversations` before you can access messages by conversation ID
+- You must `GET /api/events` before you can `PATCH/DELETE /api/events/:id`
+
+The `shared/schema.ts` TypeScript types are still used by `mappers.ts` for return type annotations. The Drizzle table definitions are inert.
 
 ---
 
-## 9. Seed Data Summary
+## 9. Seed Data (Live Nextcloud)
 
-- **1 user**: Piyush Sharma (piyush@cloudspace.home, admin)
-- **6 folders** + **10 files** in the file system
-- **5 conversations** (3 DM, 2 group) with **8 messages each**
-- **8 calendar events** (Apr 7-28, 2026)
-- **5 notes** (2 pinned)
-- **10 contacts** (Indian names: Rohan, Priya, Arjun, Neha, Vikram, Anjali, Rahul, Kavita, Deepak, Sneha)
-- **2 boards** ("Product Roadmap", "Sprint 12"), each with 4 stacks, ~11 cards each
-- **8 inbox emails**, **3 sent**, **2 drafts** (realistic senders/subjects)
-- **20 activity entries** (file, share, comment, talk, system types over 3 days)
+The Nextcloud instance is seeded with realistic data via `cloudspace-backend/seed/seed.sh` (1800 lines):
+
+| Resource | Count | NC App |
+|----------|-------|--------|
+| Users | 10 (piyush + 9 team members) | Core |
+| Folders | 50 | Files (WebDAV) |
+| Files | 100 | Files (WebDAV) |
+| Calendar Events | ~80 | Calendar (CalDAV) |
+| Contacts | 100 | Contacts (CardDAV) |
+| Notes | 50 | Notes app |
+| Deck Boards | 20 | Deck app |
+| Deck Cards | 800 | Deck app |
+| Talk Rooms | 10 | Spreed/Talk app |
+| Talk Messages | 200 | Spreed/Talk app |
+| File Shares | 20+ | Sharing API |
+
+### Credentials
+
+| User | Password | Role |
+|------|----------|------|
+| admin | CloudSpace2026! | Nextcloud Admin |
+| piyush | cloudspace123 | Primary test user |
+| gaurav, rohan, priya, arjun, neha, vikram, anjali, rahul, kavita | test123 | Team members |
 
 ---
 
@@ -407,46 +393,78 @@ Insert schemas via `drizzle-zod`: `insertUserSchema`, `insertFileSchema`, etc.
 ## 11. Git History
 
 ```
-ffb104e feat: add mail and activity screens             <- current HEAD
+a8bbef8 test: fix notes tests — install NC Notes app, reseed 50 notes, add waitForResponse
+22e4314 test: add full Playwright E2E suite with NC adapter session handling
+c0e71fd feat: overhaul Talk page with search, calls, mute, groups, and admin system
+0da49c0 feat: add media gallery, settings page, and polish pass
+ffb104e feat: add mail and activity screens
 e1a88c2 feat: add contacts and deck screens
 3d811c0 feat: add calendar and notes screens
 e199fe1 feat: add talk screen with chat, calls, and group management
 26063dd feat: add dashboard and files browser
-a47198c chore: scaffold CloudSpace project -- design system, app shell, and login page
+a47198c chore: scaffold CloudSpace project — design system, app shell, and login page
 ```
 
-All commits use format: `feat: description` + `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>`
-Branch: `main`, remote: `origin` -> `https://github.com/DExPioson/Gaurav-NextCloud.git`
+Branch: `staging`, remote: `origin` → `https://github.com/DExPioson/NextCloud-Frontend.git`
+Git user: `grvsmalik` / `grvsmalik@users.noreply.github.com`
 
 ---
 
 ## 12. Dev Workflow & Gotchas
 
-### Running the project
-```bash
-cd cloudspace
-npm run dev          # Vite dev server on port 5173
-npx tsx server/index.ts  # Express API on port 5000 (run separately)
+### Daily Startup Sequence
+
 ```
-Vite auto-proxies `/api` requests to `localhost:5000`.
+1. Start Docker Desktop            → wait until engine status shows "Running"
+2. cd cloudspace-backend
+   docker compose up -d            → boots the Nextcloud containers (port 8080)
+3. Wait ~60 seconds                → NC needs time to initialize on first boot
+4. cd cloudspace-frontend
+   npm run dev                     → Terminal 1 (Vite dev server on :5173)
+5. npx tsx server/index.ts         → Terminal 2 (API adapter on :5000)
+6. npx playwright test             → (optional) verify everything works — 81 tests
+```
 
-### Critical gotchas
-1. **Express server must be manually restarted** after editing `server/index.ts` or `storage.ts`. Find PID with `netstat -ano | findstr ":5000"`, kill it with `taskkill //PID <pid> //F`, then restart.
-2. **Delete `dev.db` before restarting server** if you want fresh seed data (SQLite file persists).
-3. **Vite HMR can get stale** — if you see errors about duplicate identifiers after refactoring, stop and restart the Vite dev server completely.
-4. **Screenshot timeouts**: If using Claude Preview MCP tools, `preview_screenshot` times out due to Vite HMR WebSocket. Use `preview_snapshot` (accessibility tree) and `preview_inspect` (CSS) instead.
-5. **Preview viewport**: After restart, preview may default to small viewport. Use `preview_resize` with width=1280, height=800.
-6. **Radix Select**: `<SelectItem value="">` is invalid — Radix requires non-empty string values. Use a placeholder like `"unassigned"`.
-7. **TypeScript check**: Run `npm run check` after every prompt to verify. Must pass before committing.
-8. **Name conflicts**: lucide-react exports icon components named `Activity`, `Mail`, etc. When importing schema types with the same name, alias them: `import type { Activity as ActivityType } from "@shared/schema"`.
+### Environment Variables (`.env`)
 
-### Commit workflow
+```
+NC_BASE_URL=https://localhost          # The NC instance URL (adapter uses this)
+NODE_TLS_REJECT_UNAUTHORIZED=0         # Required for self-signed certs
+SESSION_SECRET=<redacted>              # Express session secret
+PORT=5000                              # API server port
+```
+
+**Note**: The `.env` uses `https://localhost` because the full Nextcloud AIO setup serves HTTPS. If running the minimal docker-compose from `cloudspace-backend/`, the container maps port 8080→80 (plain HTTP). The adapter in `nc-adapter.ts` reads `NC_BASE_URL` and uses it as-is. The seed script requires `http://localhost:8080` because `curl -sk` for HTTPS fails in Git Bash on Windows.
+
+### Critical Gotchas
+
+1. **Express server must be manually restarted** after editing `server/index.ts`, `nc-adapter.ts`, `mappers.ts`, or `storage.ts`. Find PID with `netstat -ano | findstr ":5000"`, kill with `taskkill //PID <pid> //F`, then restart.
+
+2. **In-memory caches clear on restart** — the first page load after restarting the server will be slow as it repopulates `conversationTokens`, `cardLookup`, `eventHrefs`, `contactHrefs`, and `mailAccount`. If you get 404s on card/event/contact operations, navigate to the parent listing first to repopulate the cache.
+
+3. **`sessions.db` persists** — the session cookie remains valid across server restarts. Delete `sessions.db` to force re-login.
+
+4. **Vite HMR can get stale** — if you see errors about duplicate identifiers after refactoring, stop and restart the Vite dev server completely.
+
+5. **Radix Select**: `<SelectItem value="">` is invalid — Radix requires non-empty string values. Use a placeholder like `"unassigned"`.
+
+6. **TypeScript check**: Run `npm run check` after every prompt to verify. Must pass before committing.
+
+7. **Name conflicts**: lucide-react exports icon components named `Activity`, `Mail`, etc. When importing schema types with the same name, alias them: `import type { Activity as ActivityType } from "@shared/schema"`.
+
+8. **Talk API quirks**: The OCS Spreed API requires `?format=json` appended to get JSON responses (default is XML). Conversation operations use room **tokens** (string), not numeric IDs. The adapter maintains a token cache in `storage.ts`.
+
+9. **Deck API requires board+stack context**: To update or delete a card, you need `boardId` and `stackId`. These are cached in `cardLookup` when boards are fetched. If the cache is cold, card operations fail with 404.
+
+10. **Notes app must be installed separately**: It's not included in the Nextcloud 28 base image. Install with `docker exec -u www-data <container> php occ app:install notes`.
+
+### Commit Workflow
 ```bash
 git add <specific files>   # Never git add -A
 git commit -m "feat: <description>
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
-git push origin main
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+git push origin main:staging
 ```
 
 ---
@@ -467,50 +485,245 @@ Border radius: `--radius: 0.5rem`
 
 ---
 
-## 14. Storage Methods (server/storage.ts)
-
-The `DatabaseStorage` class implements `IStorage` interface. Key methods per entity:
-
-| Entity | Methods |
-|--------|---------|
-| Users | `getUser`, `getUserByEmail`, `createUser`, `updateUser` |
-| Files | `getAllFiles`, `getFiles(parentPath)`, `getFile`, `createFile`, `updateFile`, `deleteFile` |
-| Conversations | `getConversations`, `getConversation`, `createConversation`, `updateConversation` |
-| Messages | `getMessages(convId)`, `createMessage` |
-| Events | `getEvents`, `getEvent`, `createEvent`, `updateEvent`, `deleteEvent` |
-| Notes | `getNotes`, `getNote`, `createNote`, `updateNote`, `deleteNote` |
-| Contacts | `getContacts`, `getContact`, `createContact`, `updateContact`, `deleteContact` |
-| Boards | `getBoards`, `getBoard`, `createBoard` |
-| Stacks | `getStacks(boardId)`, `createStack` |
-| Cards | `getCards(boardId)`, `getCard`, `createCard`, `updateCard`, `deleteCard` |
-| Emails | `getEmails(folder)`, `getEmail`, `createEmail`, `updateEmail`, `deleteEmail`, `getEmailCounts` |
-| Activities | `getActivities`, `getActivity`, `updateActivity`, `markAllActivitiesRead` |
-
----
-
-## 15. Sidebar Badge System
+## 14. Sidebar Badge System
 
 `Sidebar.tsx` fetches 3 separate queries for badge counts:
-1. **Talk**: `GET /api/conversations` -> sum of `unreadCount` across all conversations
-2. **Mail**: `GET /api/emails/counts` -> `counts.inbox` (unread inbox emails)
-3. **Activity**: `GET /api/activity?limit=50&type=all` -> count of items where `!isRead`
+1. **Talk**: `GET /api/conversations` → sum of `unreadCount` across all conversations
+2. **Mail**: `GET /api/emails/counts` → `counts.inbox` (unread inbox emails)
+3. **Activity**: `GET /api/activity?limit=50&type=all` → count of items where `!isRead`
 
 All use `staleTime: 30_000`. Badge style: `bg-primary text-primary-foreground text-[10px] rounded-full px-1.5 min-w-[18px] text-center`.
 
 ---
 
+## 15. Graceful Degradation
+
+Every NC API call in `server/index.ts` is wrapped in try/catch. If an NC app is missing or returns an error, the adapter returns `{ data: [] }` with HTTP 200. This means:
+- If the Notes app isn't installed → Notes page shows empty state
+- If Talk/Spreed isn't installed → Talk page shows empty conversation list
+- If Deck isn't installed → Deck page shows empty board list
+- If Mail isn't configured → Mail page shows folders but no messages
+
+The frontend already has empty state UIs for all pages, so missing NC apps degrade gracefully.
+
+---
+
 ## 16. Next Step: Prompt #09
 
-The next prompt to implement is **#09: Final QA + Build + Deploy**. The spec is at:
-`C:\Users\admin\Downloads\CLAUDE_CODE_PROMPT_09_FINAL.md` (or similar naming)
+The next prompt to implement is **#09: Final QA + Build + Deploy**.
 
-All 12 screens are built and polished. What comes next:
-- **Prompt #09**: Production build, final QA across all screens, performance audit, accessibility check, deploy
+All 12 screens are built, polished, and passing 81 E2E tests against a live Nextcloud backend. What comes next:
+- Production build verification (`npm run build`)
+- Final QA across all screens
+- Performance audit (bundle size, lazy loading)
+- Accessibility check
+- Deploy
 
-### Implementation notes
-- Media uses **inline mock data** (no DB table) — 24 photos from `picsum.photos`, 5 albums
-- Settings Appearance section directly modifies `document.documentElement` for theme/accent/fontSize — theme persists via `localStorage`, accent color and font size are ephemeral (reset on reload)
-- The `@radix-ui/react-slider` package was installed for the font size slider in Settings > Appearance
+### Implementation Notes
+- Media uses **inline mock data** (no NC integration) — 24 photos from `picsum.photos`, 5 albums
+- Settings Appearance section directly modifies `document.documentElement` for theme/accent/fontSize — theme persists via `localStorage`, accent color and font size are ephemeral
 - Command palette uses inline mock data for file/contact search results (no API call)
 - Notification bell uses hardcoded notifications (no API endpoint)
-- No new DB schema was needed for Prompts #07 or #08
+
+---
+
+## 17. Nextcloud Backend Setup
+
+A separate `cloudspace-backend/` folder contains the Docker infrastructure. It is NOT a git submodule — it's a standalone directory alongside the frontend repo.
+
+### docker-compose.yml
+
+Runs `nextcloud:28` + `postgres` on port 8080:
+```yaml
+# Container: cloudspace-backend-nextcloud-1
+# Port mapping: 8080 → 80 (plain HTTP)
+# Database: cloudspace-backend-db-1 (PostgreSQL)
+```
+
+### First-Time Setup
+
+```bash
+cd cloudspace-backend
+docker compose up -d
+# Wait for NC to initialize (~60 seconds)
+
+# Install required apps (not included in base image)
+docker exec -u www-data cloudspace-backend-nextcloud-1 php occ app:install deck
+docker exec -u www-data cloudspace-backend-nextcloud-1 php occ app:install spreed
+docker exec -u www-data cloudspace-backend-nextcloud-1 php occ app:install notes
+
+# Disable password policy (needed for simple test passwords)
+docker exec -u www-data cloudspace-backend-nextcloud-1 php occ app:disable password_policy
+
+# Seed data
+chmod +x seed/seed.sh
+NC_BASE_URL="http://localhost:8080" bash seed/seed.sh
+```
+
+### Seed Script Details
+
+`seed/seed.sh` is 1800 lines of bash. Key characteristics:
+- Runs in **Git Bash** (not WSL, not PowerShell)
+- No `python3` or `jq` available — JSON parsing done with `grep -o` patterns
+- Uses `curl -sk` for HTTP calls (the `-k` is for HTTPS setups; not needed on HTTP)
+- Talk room creation requires **form-encoded POST** (not JSON content-type) and returns XML tokens
+- Idempotent: HTTP 409 (already exists) responses are treated as success
+- Must use `NC_BASE_URL="http://localhost:8080"` explicitly in Git Bash (the default `https://localhost` in the script fails on Windows Git Bash due to TLS)
+
+### Daily Startup
+
+```
+1. Start Docker Desktop            → wait for engine "Running"
+2. docker compose up -d            → boots NC containers
+3. Wait ~60 seconds                → NC initialization
+4. cd cloudspace-frontend
+   npm run dev                     → Vite dev server (:5173)
+5. npx tsx server/index.ts         → API adapter (:5000)
+6. npx playwright test             → (optional) 81-test verification
+```
+
+### Reset Everything
+
+```bash
+cd cloudspace-backend
+docker compose down -v   # Removes all containers and volumes
+# Then re-run first-time setup from step 1
+```
+
+---
+
+## 18. Playwright Test Suite
+
+### Overview
+
+- **81 tests** across 14 spec files covering all 12 screens + auth + theme persistence
+- All tests run against the **live Nextcloud backend** — no mocking
+- All assertions are **structural** (first visible item, count > 0, container exists) — never assert on specific data values from the live backend
+- Runtime: ~2.3 minutes on Chromium (headless)
+- Status: **81 passed, 0 skipped, 0 failed**
+
+### Configuration (`playwright.config.ts`)
+
+```typescript
+{
+  testDir: "./e2e",
+  globalSetup: "./playwright/global-setup.ts",
+  fullyParallel: false,         // Sequential — tests may depend on prior state
+  retries: 1,
+  timeout: 30_000,
+  use: {
+    baseURL: "http://localhost:5173",
+    storageState: "playwright/.auth/session.json",
+    headless: true,
+    viewport: { width: 1280, height: 800 },
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
+  },
+  projects: [{ name: "chromium" }],
+}
+```
+
+### Global Setup (`playwright/global-setup.ts`)
+
+Logs in via `POST http://localhost:5000/api/auth/login` with `piyush@cloudspace.home` / `cloudspace123`, saves the session cookie to `playwright/.auth/session.json`. This file is gitignored.
+
+### Test Helpers (`e2e/helpers.ts`)
+
+- `login(page)` — checks if storageState session is valid; only does form login if needed
+- `navigateTo(page, path)` — `goto` + `waitForLoadState("networkidle")`
+- `expectToast(page, text?)` — waits for `#cs-toast` element
+- `waitForData(page)` — alias for `waitForLoadState("networkidle")`
+
+### Key Testing Patterns
+
+1. **networkidle after every navigation** — required because the NC adapter makes real HTTP calls
+2. **waitForResponse for slow endpoints** — Notes tests use `page.waitForResponse(r => r.url().includes("/api/notes"))` because the NC Notes API can be slow
+3. **test.skip() for empty data** — Notes tests gracefully skip if no notes exist in NC
+4. **Generous timeouts** — 10000ms on all `toBeVisible` assertions for API-dependent content
+5. **No hardcoded data assertions** — never check for specific names like "Rohan" or "Product Roadmap"; always check structural presence (`.first()`, `.count() > 0`)
+
+### Running Tests
+
+```bash
+npx playwright test              # Headless, all tests
+npx playwright test --ui         # Interactive UI mode
+npx playwright test e2e/07-notes.spec.ts   # Single file
+npx playwright test --reporter=list        # Verbose output
+```
+
+### Test File Summary
+
+| File | Tests | Covers |
+|------|-------|--------|
+| 01-auth | 4 | Login page render, failed login, success login, sign out |
+| 02-layout | 8 | Sidebar nav, collapse/expand, badges, command palette (3 tests), notifications, user dropdown, dark mode |
+| 03-dashboard | 3 | Widget loading, storage ring, recent files links |
+| 04-files | 4 | File browser, grid/list toggle, folder navigation, create folder |
+| 05-talk | 9 | Conversations, select/view, send message, info panel, search, create group, voice call, incoming call |
+| 06-calendar | 5 | Month view, view switching, month navigation, create event, delete event |
+| 07-notes | 5 | Page load, select/read, create, delete, pin/unpin |
+| 08-contacts | 6 | Page load, grid/list toggle, search, detail panel, create, delete |
+| 09-deck | 5 | Board list, stacks, card modal, create card, delete card |
+| 10-mail | 8 | Folders, inbox, read email, star, switch folders, search, compose, delete |
+| 11-activity | 4 | Feed load, filter tabs, search, mark all read |
+| 12-media | 7 | Gallery, albums, lightbox, keyboard nav, multi-select, list view, upload dialog |
+| 13-settings | 9 | All 7 sections render + profile edit/save + profile discard + security + sessions + notifications + appearance + storage + connected apps + about |
+| 14-theme | 2 | Dark mode persistence, sidebar collapse persistence |
+| **Total** | **81** | |
+
+---
+
+## 19. Mapper Functions Reference (`server/mappers.ts`)
+
+Each mapper is a pure function converting NC API data to CloudSpace schema types:
+
+| Function | Input | Output | Parser |
+|----------|-------|--------|--------|
+| `ncUserToUser(ocs)` | OCS user data | `User` | Direct field mapping |
+| `davToFile(response, basePath)` | WebDAV PROPFIND response | `File \| null` | XML property extraction |
+| `ncTalkRoomToConversation(room)` | OCS Spreed room | `Conversation` | Type mapping (1→dm, 2/3→group) |
+| `ncTalkMessageToMessage(msg, convId)` | OCS Spreed message | `Message` | Timestamp conversion |
+| `icsToEvent(icalString, href)` | iCal VEVENT string | `Event \| null` | `ical.js` ICAL.parse |
+| `vcardToContact(vcardString, href)` | vCard string | `Contact \| null` | `ical.js` ICAL.parse |
+| `contactToVcard(contact)` | Partial `Contact` | vCard string | String concatenation |
+| `eventToIcs(event, uid?)` | Partial `Event` | iCal string | String concatenation |
+| `ncNoteToNote(json)` | Notes API JSON | `Note` | Direct field mapping |
+| `deckBoardToBoard(json)` | Deck API JSON | `Board` | Color prefix fix (`#`) |
+| `deckStackToStack(json)` | Deck API JSON | `Stack` | Direct field mapping |
+| `deckCardToCard(json, boardId, stackId)` | Deck API JSON | `Card` | Assignee extraction |
+| `ncMailToEmail(json, folder)` | Mail API JSON | `Email` | From/To array extraction |
+| `ncActivityToActivity(json)` | Activity API JSON | `Activity` | Type classification |
+
+### ID Generation
+
+CalDAV and CardDAV resources don't have numeric IDs. The adapter generates deterministic numeric IDs by hashing the UID string:
+```typescript
+let hash = 0;
+for (let i = 0; i < uid.length; i++) {
+  hash = ((hash << 5) - hash + uid.charCodeAt(i)) | 0;
+}
+return Math.abs(hash) % 1000000;
+```
+
+---
+
+## 20. Known Issues & Lessons Learned
+
+### Hard-Won Lessons from the NC Integration
+
+| # | Issue | Root Cause | Fix |
+|---|-------|-----------|-----|
+| 1 | Notes API returns empty `[]` | Notes app not installed in NC base image | `php occ app:install notes` — must be done manually after first boot |
+| 2 | Seed script fails silently in Git Bash | Default `NC_BASE_URL=https://localhost` causes TLS failure with `curl -sk` on Windows | Override: `NC_BASE_URL="http://localhost:8080" bash seed/seed.sh` |
+| 3 | Playwright tests fail — no data loads | Session cookie not established before tests run | Global setup file logs in via API, saves storageState to `playwright/.auth/session.json` |
+| 4 | Tests assert on hardcoded names like "Rohan" | Tests were written for SQLite seed data, but NC adapter returns live data | Replace all name assertions with structural checks (`.first()`, count > 0) |
+| 5 | Notes tests skip even though 51 notes exist | `networkidle` fires before React Query resolves the API call | Add `waitForResponse(r => r.url().includes("/api/notes"))` in beforeEach |
+| 6 | `text=Upcoming Events` locator fails | Strict mode violation — matches both `<h3>Upcoming Events</h3>` and `<p>No upcoming events</p>` | Add `.first()` to ambiguous text locators |
+
+### Architectural Constraints
+
+- **In-memory caches are volatile**: The adapter caches (cardLookup, conversationTokens, etc.) are lost on server restart. The frontend naturally repopulates them via its initial GET requests on page load.
+- **No real-time sync**: The adapter does not implement WebSocket/SSE. Polling via TanStack Query's `staleTime` is the only refresh mechanism.
+- **Activity read state is local-only**: NC's Activity API has no read/unread concept. The `activityReadState` Map in `storage.ts` tracks this in-memory.
+- **Mail counts are static**: `GET /api/emails/counts` returns `{ inbox: 0, drafts: 0, spam: 0 }` because computing real counts from the NC Mail API is expensive.
+- **Media is fully mocked**: The Media page uses inline mock data (picsum.photos). No NC integration exists for photos/media.
