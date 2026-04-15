@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Switch, Route, useLocation, Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
@@ -18,7 +18,6 @@ import Activity from "@/pages/Activity";
 import Media from "@/pages/Media";
 import Settings from "@/pages/Settings";
 
-// ─── Theme ──────────────────────────────────────────────────
 function useTheme() {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const stored = localStorage.getItem("cloudspace-theme");
@@ -35,18 +34,17 @@ function useTheme() {
   return { theme, setTheme };
 }
 
-// ─── Query Client ───────────────────────────────────────────
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
       gcTime: 5 * 60_000,
       retry: 1,
+      refetchOnWindowFocus: false,
     },
   },
 });
 
-// ─── App Shell ──────────────────────────────────────────────
 function AppShell() {
   const [location] = useLocation();
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1024);
@@ -96,7 +94,53 @@ function AppShell() {
   );
 }
 
-// ─── Root App ───────────────────────────────────────────────
+function FullScreenLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+      Connecting to Nextcloud...
+    </div>
+  );
+}
+
+function AppRoutes() {
+  const [location, setLocation] = useLocation();
+  const { data: session, isLoading } = useQuery({
+    queryKey: ["/api/auth/session"],
+    queryFn: async () => {
+      const response = await fetch("/api/auth/session");
+      if (response.status === 401) return null;
+      if (!response.ok) throw new Error("Unable to restore session");
+      const payload = await response.json();
+      return payload.user;
+    },
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (!session && location !== "/login") {
+      setLocation("/login");
+      return;
+    }
+
+    if (session && location === "/login") {
+      setLocation("/");
+    }
+  }, [isLoading, location, session, setLocation]);
+
+  if (isLoading) {
+    return <FullScreenLoader />;
+  }
+
+  return (
+    <Switch>
+      <Route path="/login">{() => <Login />}</Route>
+      <Route>{() => (session ? <AppShell /> : <FullScreenLoader />)}</Route>
+    </Switch>
+  );
+}
+
 export default function App() {
   useTheme();
 
@@ -104,10 +148,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Router hook={useHashLocation}>
-          <Switch>
-            <Route path="/login">{() => <Login />}</Route>
-            <Route>{() => <AppShell />}</Route>
-          </Switch>
+          <AppRoutes />
         </Router>
       </TooltipProvider>
     </QueryClientProvider>

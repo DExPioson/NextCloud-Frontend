@@ -62,16 +62,17 @@ const COLUMN_COLORS: Record<string, string> = {
   "Done": "border-t-green-400",
 };
 
-const TEAM = ["Piyush Sharma", "Rohan Mehra", "Priya Kapoor", "Arjun Singh", "Neha Joshi"];
+const DEFAULT_TEAM = ["Rohan Mehra", "Priya Kapoor", "Arjun Singh", "Neha Joshi"];
 
 // ─── Card Detail Modal ─────────────────────────────────────
 function CardDetailModal({
-  card, stacks, open, onOpenChange,
+  card, stacks, open, onOpenChange, currentUserName,
 }: {
   card: Card;
   stacks: StackWithCards[];
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  currentUserName: string;
 }) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(card.title);
@@ -104,6 +105,10 @@ function CardDetailModal({
   const [localLabels, setLocalLabels] = useState(labels);
 
   const currentStack = stacks.find(s => s.id === card.stackId);
+  const team = useMemo(
+    () => [currentUserName, ...DEFAULT_TEAM.filter((member) => member !== currentUserName)],
+    [currentUserName],
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -135,8 +140,8 @@ function CardDetailModal({
             <div className="border-t pt-4 mt-4">
               <p className="text-sm font-semibold mb-3">Activity</p>
               <div className="flex items-start gap-2 mb-4">
-                <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0", getAvatarColor("Piyush Sharma"))}>
-                  PS
+                <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0", getAvatarColor(currentUserName))}>
+                  {getInitials(currentUserName)}
                 </div>
                 <div className="flex-1">
                   <Textarea className="min-h-[60px] text-sm" placeholder="Write a comment…" />
@@ -153,9 +158,9 @@ function CardDetailModal({
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
-                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0", getAvatarColor("Piyush Sharma"))}>PS</div>
+                  <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0", getAvatarColor(currentUserName))}>{getInitials(currentUserName)}</div>
                   <div>
-                    <p className="text-xs font-medium">Piyush Sharma <span className="text-muted-foreground font-normal">· 5 hours ago</span></p>
+                    <p className="text-xs font-medium">{currentUserName} <span className="text-muted-foreground font-normal">· 5 hours ago</span></p>
                     <p className="text-sm">Added to sprint</p>
                   </div>
                 </div>
@@ -204,7 +209,7 @@ function CardDetailModal({
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Unassigned" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {TEAM.map(t => (
+                  {team.map(t => (
                     <SelectItem key={t} value={t}>{t}</SelectItem>
                   ))}
                 </SelectContent>
@@ -431,6 +436,11 @@ function KanbanColumn({
 // ─── Main Deck Page ────────────────────────────────────────
 export default function Deck() {
   const queryClient = useQueryClient();
+  const { data: currentUserData } = useQuery<{ data: { name?: string } }>({
+    queryKey: ["/api/user"],
+    queryFn: () => fetch("/api/user").then((r) => r.json()),
+  });
+  const currentUserName = currentUserData?.data?.name || "You";
 
   // Fetch boards list
   const { data: boardsData } = useQuery<{ data: Board[] }>({
@@ -655,6 +665,7 @@ export default function Deck() {
         <CardDetailModal
           card={activeCard}
           stacks={localStacks}
+          currentUserName={currentUserName}
           open={!!activeCard}
           onOpenChange={v => { if (!v) setActiveCard(null); }}
         />

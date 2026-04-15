@@ -16,6 +16,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getInitials } from "@/lib/utils";
 import { CloudSpaceLogo } from "./CloudSpaceLogo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Conversation, Activity as ActivityType } from "@shared/schema";
@@ -41,6 +42,15 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [location] = useLocation();
+  const { data: userData } = useQuery({
+    queryKey: ["/api/user"],
+    queryFn: async () => {
+      const res = await fetch("/api/user");
+      return res.json() as Promise<{ data: { name?: string; email?: string } }>;
+    },
+  });
+  const userName = userData?.data?.name || "User";
+  const userEmail = userData?.data?.email || "";
 
   const { data: convosData } = useQuery({
     queryKey: ["/api/conversations"],
@@ -162,12 +172,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <div className={cn("border-t p-3", collapsed && "flex justify-center p-2")}>
         <div className={cn("flex items-center gap-3", collapsed && "gap-0")}>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-            PS
+            {getInitials(userName)}
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">Piyush Sharma</p>
-              <p className="truncate text-xs text-muted-foreground">piyush@cloudspace.home</p>
+              <p className="truncate text-sm font-medium">{userName}</p>
+              <p className="truncate text-xs text-muted-foreground">{userEmail}</p>
             </div>
           )}
         </div>

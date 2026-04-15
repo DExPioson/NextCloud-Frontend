@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Bell, Search, FileUp, MessageSquare, CalendarDays, UserPlus,
   User, Palette, Keyboard, LogOut,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -67,16 +69,33 @@ interface TopBarProps {
 }
 
 export function TopBar({ sidebarCollapsed }: TopBarProps) {
+  const queryClient = useQueryClient();
   const [location, navigate] = useLocation();
   const title = pageTitles[location] || "CloudSpace";
   const [cmdOpen, setCmdOpen] = useState(false);
   const [badgeCount, setBadgeCount] = useState(3);
   const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { data: userData } = useQuery({
+    queryKey: ["/api/user"],
+    queryFn: async () => {
+      const res = await fetch("/api/user");
+      return res.json() as Promise<{ data: { name?: string; email?: string } }>;
+    },
+  });
+  const userName = userData?.data?.name || "User";
+  const userEmail = userData?.data?.email || "";
 
   const markAllRead = () => {
     setBadgeCount(0);
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  };
+
+  const handleSignOut = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+    queryClient.setQueryData(["/api/auth/session"], null);
+    navigate("/login");
+    showToast("Signed out");
   };
 
   return (
@@ -168,13 +187,13 @@ export function TopBar({ sidebarCollapsed }: TopBarProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="ml-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground cursor-pointer hover:opacity-90 transition-opacity">
-              PS
+              {getInitials(userName)}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="font-normal">
-              <p className="font-medium text-sm">Piyush Sharma</p>
-              <p className="text-xs text-muted-foreground">piyush@cloudspace.home</p>
+              <p className="font-medium text-sm">{userName}</p>
+              <p className="text-xs text-muted-foreground">{userEmail}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate("/settings")}>
@@ -189,7 +208,7 @@ export function TopBar({ sidebarCollapsed }: TopBarProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
-              onClick={() => { navigate("/login"); showToast("Signed out"); }}
+              onClick={handleSignOut}
             >
               <LogOut className="mr-2 h-4 w-4" /> Sign out
             </DropdownMenuItem>

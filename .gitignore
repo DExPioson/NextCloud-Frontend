@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+dev.db
+sessions.db
+test-results/
+playwright/.auth/
 
 # Editor directories and files
 .vscode/*
