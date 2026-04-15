@@ -5,7 +5,7 @@ import {
   Camera, Lock, Laptop, Smartphone, Check, CheckCircle,
   Trash2, Download, Zap, Plus, ExternalLink, X, AlertCircle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,8 +69,8 @@ function ProfileSection() {
   });
   const user = data?.data;
 
-  const [name, setName] = useState("Piyush Sharma");
-  const [username, setUsername] = useState("piyush");
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [language, setLanguage] = useState("en");
   const [timezone, setTimezone] = useState("asia-calcutta");
@@ -79,14 +79,21 @@ function ProfileSection() {
     if (user?.name) setName(user.name);
   }, [user?.name]);
 
+  useEffect(() => {
+    if (!user?.email) return;
+    const derivedUsername = user.email.split("@")[0] || "";
+    setUsername(derivedUsername);
+  }, [user?.email]);
+
   const isDirty = useMemo(() => {
-    const origName = user?.name || "Piyush Sharma";
-    return name !== origName || bio !== "" || username !== "piyush" || language !== "en" || timezone !== "asia-calcutta";
-  }, [name, bio, username, language, timezone, user?.name]);
+    const origName = user?.name || "";
+    const origUsername = (user?.email || "").split("@")[0] || "";
+    return name !== origName || bio !== "" || username !== origUsername || language !== "en" || timezone !== "asia-calcutta";
+  }, [name, bio, username, language, timezone, user?.name, user?.email]);
 
   const handleDiscard = () => {
-    setName(user?.name || "Piyush Sharma");
-    setUsername("piyush");
+    setName(user?.name || "");
+    setUsername((user?.email || "").split("@")[0] || "");
     setBio("");
     setLanguage("en");
     setTimezone("asia-calcutta");
@@ -109,7 +116,7 @@ function ProfileSection() {
       {/* Avatar */}
       <div className="flex items-center gap-6 py-6 border-b">
         <div className="w-20 h-20 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-2xl font-semibold">
-          PS
+          {getInitials(name || user?.name || "User")}
         </div>
         <div>
           <p className="text-sm font-medium mb-2">Profile photo</p>
@@ -132,7 +139,7 @@ function ProfileSection() {
           <div>
             <Label className="text-sm">Email</Label>
             <div className="relative mt-1">
-              <Input value={user?.email || "piyush@cloudspace.home"} disabled className="pr-8" />
+              <Input value={user?.email || ""} disabled className="pr-8" />
               <Lock size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             </div>
           </div>

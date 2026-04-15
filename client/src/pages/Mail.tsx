@@ -36,7 +36,17 @@ function showToast(msg: string) {
 }
 
 // ─── Compose Dialog ────────────────────────────────────────
-function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+function ComposeDialog({
+  open,
+  onOpenChange,
+  currentUserName,
+  currentUserEmail,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  currentUserName: string;
+  currentUserEmail: string;
+}) {
   const queryClient = useQueryClient();
   const [to, setTo] = useState<string[]>([]);
   const [toInput, setToInput] = useState("");
@@ -66,8 +76,8 @@ function ComposeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     mutationFn: (folder: string) =>
       apiRequest("POST", "/api/emails", {
         folder,
-        from: "Piyush Sharma",
-        fromEmail: "piyush@cloudspace.home",
+        from: currentUserName,
+        fromEmail: currentUserEmail,
         to: to.join(", "),
         subject: subject || "(no subject)",
         preview: body.substring(0, 100),
@@ -217,6 +227,12 @@ export default function Mail() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [replyText, setReplyText] = useState("");
   const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  const { data: currentUserData } = useQuery<{ data: { name?: string; email?: string } }>({
+    queryKey: ["/api/user"],
+    queryFn: () => fetch("/api/user").then((r) => r.json()),
+  });
+  const currentUserName = currentUserData?.data?.name || "You";
+  const currentUserEmail = currentUserData?.data?.email || "user@cloudspace.home";
 
   // Fetch emails for current folder
   const folderToFetch = activeFolder === "starred" ? "inbox" : activeFolder;
@@ -270,8 +286,8 @@ export default function Mail() {
     mutationFn: () =>
       apiRequest("POST", "/api/emails", {
         folder: "sent",
-        from: "Piyush Sharma",
-        fromEmail: "piyush@cloudspace.home",
+        from: currentUserName,
+        fromEmail: currentUserEmail,
         to: activeEmail?.fromEmail ?? "",
         subject: `Re: ${activeEmail?.subject ?? ""}`,
         preview: replyText.substring(0, 100),
@@ -529,7 +545,7 @@ export default function Mail() {
                 {format(parseISO(activeEmail.receivedAt), "EEE, d MMM yyyy, h:mm a")}
               </p>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">To: Piyush Sharma</p>
+            <p className="text-sm text-muted-foreground mt-1">To: {currentUserName}</p>
 
             {activeEmail.hasAttachment && (
               <div className="flex gap-2 mt-3">
@@ -614,7 +630,14 @@ export default function Mail() {
       )}
 
       {/* Compose dialog */}
-      {composeOpen && <ComposeDialog open={composeOpen} onOpenChange={setComposeOpen} />}
+      {composeOpen && (
+        <ComposeDialog
+          open={composeOpen}
+          onOpenChange={setComposeOpen}
+          currentUserName={currentUserName}
+          currentUserEmail={currentUserEmail}
+        />
+      )}
     </div>
   );
 }

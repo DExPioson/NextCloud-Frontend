@@ -7,7 +7,7 @@ export default defineConfig({
   retries: 1,
   timeout: 30_000,
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:5174",
     storageState: "playwright/.auth/session.json",
     headless: true,
     viewport: { width: 1280, height: 800 },

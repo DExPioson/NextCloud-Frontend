@@ -1,79 +1,139 @@
 import express from "express";
 import { storage } from "./storage";
+import {
+  authenticateAgainstNextcloud,
+  clearNextcloudSession,
+  createFolder,
+  createNextcloudSession,
+  getCurrentUser,
+  getDashboardData,
+  getNextcloudSession,
+  listFiles,
+  updateNextcloudSession,
+} from "./nextcloud";
 
 const app = express();
 app.use(express.json());
 
+type ConversationCallState = {
+  conversationId: number;
+  type: "voice" | "video" | "screen";
+  initiatorName: string;
+  active: boolean;
+  acceptedBy: string[];
+  declinedBy: string[];
+  isScreenSharing: boolean;
+  startedAt: string;
+  updatedAt: string;
+  offer?: { type: string; sdp?: string };
+  offerFrom?: string;
+  answer?: { type: string; sdp?: string };
+  answerFrom?: string;
+  iceCandidates: Array<{ id: string; from: string; candidate: { candidate?: string; sdpMid?: string | null; sdpMLineIndex?: number | null; usernameFragment?: string | null } }>;
+};
+
+const conversationCalls = new Map<number, ConversationCallState>();
+
+function requireNextcloudSession(req: express.Request, res: express.Response) {
+  const session = getNextcloudSession(req);
+  if (!session) {
+    res.status(401).json({ ok: false, message: "Please sign in to Nextcloud." });
+    return null;
+  }
+  return session;
+}
+
 // Auth
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
-  if (email === "piyush@cloudspace.home" && password === "cloudspace") {
-    const user = storage.getUserByEmail(email);
+  if (!email || !password) {
+    return res.status(400).json({ ok: false, message: "Username/email and password are required." });
+  }
+
+  try {
+    const { session, user } = await authenticateAgainstNextcloud(email, password);
+    createNextcloudSession(res, session);
     res.json({ ok: true, user });
-  } else {
-    res.status(401).json({ ok: false, message: "Invalid credentials" });
+  } catch (_error) {
+    res.status(401).json({ ok: false, message: "Invalid Nextcloud credentials." });
+  }
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  clearNextcloudSession(req, res);
+  res.json({ ok: true });
+});
+
+app.get("/api/auth/session", async (req, res) => {
+  const session = requireNextcloudSession(req, res);
+  if (!session) return;
+
+  try {
+    const user = await getCurrentUser(session);
+    res.json({ ok: true, user });
+  } catch (_error) {
+    clearNextcloudSession(req, res);
+    res.status(401).json({ ok: false, message: "Nextcloud session expired." });
   }
 });
 
 // User
-app.get("/api/user", (_req, res) => {
-  const user = storage.getUser(1);
-  res.json({ data: user });
+app.get("/api/user", async (req, res) => {
+  const session = requireNextcloudSession(req, res);
+  if (!session) return;
+
+  try {
+    const user = await getCurrentUser(session);
+    res.json({ data: user });
+  } catch (_error) {
+    res.status(502).json({ error: "Unable to load user from Nextcloud." });
+  }
 });
 
-app.patch("/api/user", (req, res) => {
-  const updated = storage.updateUser(1, req.body);
-  if (!updated) return res.status(404).json({ error: "Not found" });
-  res.json({ data: updated });
+app.patch("/api/user", async (req, res) => {
+  const session = requireNextcloudSession(req, res);
+  if (!session) return;
+
+  const nextName = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!nextName) {
+    return res.status(400).json({ error: "Display name is required." });
+  }
+
+  updateNextcloudSession(req, { displayNameOverride: nextName });
+
+  try {
+    const user = await getCurrentUser(getNextcloudSession(req) || session);
+    res.json({ data: user });
+  } catch (_error) {
+    res.status(502).json({ error: "Unable to update user profile." });
+  }
 });
 
 // Dashboard aggregate
-app.get("/api/dashboard", (_req, res) => {
-  const user = storage.getUser(1);
-  const allFiles = storage.getAllFiles();
-  const recentFiles = allFiles
-    .filter((f) => f.type === "file")
-    .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))
-    .slice(0, 5);
+app.get("/api/dashboard", async (req, res) => {
+  const session = requireNextcloudSession(req, res);
+  if (!session) return;
 
-  const now = new Date().toISOString();
-  const allEvents = storage.getEvents();
-  const upcomingEvents = allEvents
-    .filter((e) => e.startAt >= now || e.allDay)
-    .sort((a, b) => a.startAt.localeCompare(b.startAt))
-    .slice(0, 3);
-
-  const convos = storage.getConversations();
-  const unreadMessages = convos.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-  const recentConvos = convos
-    .filter((c) => c.lastMessageAt)
-    .sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""))
-    .slice(0, 2);
-  const recentMessages = recentConvos.map((c) => {
-    const msgs = storage.getMessages(c.id);
-    const lastMsg = msgs[msgs.length - 1];
-    return { conversation: c, message: lastMsg };
-  });
-
-  const recentActivity = storage.getActivities().slice(0, 4);
-
-  res.json({
-    data: {
-      recentFiles,
-      upcomingEvents,
-      unreadMessages,
-      recentMessages,
-      storageUsed: user?.storageUsed || 0,
-      storageQuota: user?.storageQuota || 53687091200,
-      recentActivity,
-    },
-  });
+  try {
+    const data = await getDashboardData(session);
+    res.json({ data });
+  } catch (_error) {
+    res.status(502).json({ error: "Unable to load dashboard data from Nextcloud." });
+  }
 });
 
 // Files
-app.get("/api/files", (req, res) => {
+app.get("/api/files", async (req, res) => {
+  const session = requireNextcloudSession(req, res);
+  if (!session) return;
+
   const parentPath = (req.query.path as string) || "/";
-  res.json({ data: storage.getFiles(parentPath) });
+  try {
+    const files = await listFiles(session, parentPath);
+    res.json({ data: files });
+  } catch (_error) {
+    res.status(502).json({ error: "Unable to load files from Nextcloud." });
+  }
 });
 
 app.get("/api/files/:id", (req, res) => {
@@ -82,9 +142,21 @@ app.get("/api/files/:id", (req, res) => {
   res.json({ data: file });
 });
 
-app.post("/api/files", (req, res) => {
-  const file = storage.createFile(req.body);
-  res.json({ data: file });
+app.post("/api/files", async (req, res) => {
+  const session = requireNextcloudSession(req, res);
+  if (!session) return;
+
+  const { name, type = "folder", parentPath = "/" } = req.body;
+  if (type !== "folder") {
+    return res.status(501).json({ error: "Only folder creation is wired to Nextcloud right now." });
+  }
+
+  try {
+    const file = await createFolder(session, parentPath, name);
+    res.json({ data: file });
+  } catch (_error) {
+    res.status(502).json({ error: "Unable to create folder in Nextcloud." });
+  }
 });
 
 app.patch("/api/files/:id", (req, res) => {
@@ -143,14 +215,25 @@ app.get("/api/conversations/:id/messages", (req, res) => {
   msgs.sort((a, b) => a.sentAt.localeCompare(b.sentAt));
   res.json({ data: msgs });
 });
-app.post("/api/conversations/:id/messages", (req, res) => {
+app.post("/api/conversations/:id/messages", async (req, res) => {
+  const session = requireNextcloudSession(req, res);
+  if (!session) return;
+
   const conversationId = Number(req.params.id);
   const { content } = req.body;
   const sentAt = new Date().toISOString();
+
+  let currentUser;
+  try {
+    currentUser = await getCurrentUser(session);
+  } catch (_error) {
+    return res.status(502).json({ error: "Unable to resolve current user from Nextcloud." });
+  }
+
   const msg = storage.createMessage({
     conversationId,
-    senderId: 1,
-    senderName: "Piyush Sharma",
+    senderId: currentUser.id,
+    senderName: currentUser.name,
     content,
     sentAt,
   });
@@ -159,6 +242,103 @@ app.post("/api/conversations/:id/messages", (req, res) => {
     lastMessageAt: sentAt,
   });
   res.json({ data: msg });
+});
+
+// Call signaling
+app.get("/api/conversations/:id/call", (req, res) => {
+  const conversationId = Number(req.params.id);
+  const call = conversationCalls.get(conversationId) || null;
+  res.json({ data: call });
+});
+
+app.post("/api/conversations/:id/call/start", (req, res) => {
+  const conversationId = Number(req.params.id);
+  const now = new Date().toISOString();
+  const type = req.body.type as "voice" | "video" | "screen";
+  const initiatorName = (req.body.initiatorName as string) || "User";
+
+  const next: ConversationCallState = {
+    conversationId,
+    type,
+    initiatorName,
+    active: true,
+    acceptedBy: [initiatorName],
+    declinedBy: [],
+    isScreenSharing: type === "screen",
+    startedAt: now,
+    updatedAt: now,
+    iceCandidates: [],
+  };
+  conversationCalls.set(conversationId, next);
+  res.json({ data: next });
+});
+
+app.post("/api/conversations/:id/call/accept", (req, res) => {
+  const conversationId = Number(req.params.id);
+  const existing = conversationCalls.get(conversationId);
+  if (!existing || !existing.active) return res.status(404).json({ error: "No active call" });
+
+  const userName = (req.body.userName as string) || "User";
+  if (!existing.acceptedBy.includes(userName)) {
+    existing.acceptedBy.push(userName);
+  }
+  existing.updatedAt = new Date().toISOString();
+  conversationCalls.set(conversationId, existing);
+  res.json({ data: existing });
+});
+
+app.post("/api/conversations/:id/call/decline", (req, res) => {
+  const conversationId = Number(req.params.id);
+  const existing = conversationCalls.get(conversationId);
+  if (!existing || !existing.active) return res.status(404).json({ error: "No active call" });
+
+  const userName = (req.body.userName as string) || "User";
+  if (!existing.declinedBy.includes(userName)) {
+    existing.declinedBy.push(userName);
+  }
+  existing.updatedAt = new Date().toISOString();
+  conversationCalls.set(conversationId, existing);
+  res.json({ data: existing });
+});
+
+app.patch("/api/conversations/:id/call", (req, res) => {
+  const conversationId = Number(req.params.id);
+  const existing = conversationCalls.get(conversationId);
+  if (!existing || !existing.active) return res.status(404).json({ error: "No active call" });
+
+  if (typeof req.body.isScreenSharing === "boolean") {
+    existing.isScreenSharing = req.body.isScreenSharing;
+  }
+  if (req.body.offer) {
+    existing.offer = req.body.offer as { type: string; sdp?: string };
+    existing.offerFrom = (req.body.offerFrom as string) || "User";
+    existing.answer = undefined;
+    existing.answerFrom = undefined;
+    existing.iceCandidates = [];
+  }
+  if (req.body.answer) {
+    existing.answer = req.body.answer as { type: string; sdp?: string };
+    existing.answerFrom = (req.body.answerFrom as string) || "User";
+  }
+  if (req.body.iceCandidate && req.body.iceFrom) {
+    existing.iceCandidates.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      from: req.body.iceFrom as string,
+      candidate: req.body.iceCandidate as { candidate?: string; sdpMid?: string | null; sdpMLineIndex?: number | null; usernameFragment?: string | null },
+    });
+    if (existing.iceCandidates.length > 200) {
+      existing.iceCandidates = existing.iceCandidates.slice(-200);
+    }
+  }
+  existing.updatedAt = new Date().toISOString();
+  conversationCalls.set(conversationId, existing);
+  res.json({ data: existing });
+});
+
+app.post("/api/conversations/:id/call/end", (req, res) => {
+  const conversationId = Number(req.params.id);
+  conversationCalls.delete(conversationId);
+  res.json({ data: { success: true } });
 });
 
 // Events
@@ -332,7 +512,7 @@ app.post("/api/activity/read-all", (_req, res) => {
 });
 app.get("/api/activities", (_req, res) => res.json({ data: storage.getActivities() }));
 
-const PORT = 5000;
+const PORT = Number(process.env.PORT || 5000);
 app.listen(PORT, () => {
   console.log(`CloudSpace API server running on http://localhost:${PORT}`);
 });

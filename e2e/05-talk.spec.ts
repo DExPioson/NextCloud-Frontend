@@ -83,26 +83,14 @@ test.describe("Talk / Chat", () => {
     await dialog.locator("input").first().fill("E2E Test Group");
     await page.waitForTimeout(500);
 
-    // Select members from the member list (checkboxes or clickable items)
-    const memberCheckboxes = dialog.locator('[role="checkbox"], input[type="checkbox"]');
-    const checkboxCount = await memberCheckboxes.count();
-    if (checkboxCount >= 2) {
-      await memberCheckboxes.nth(0).click();
-      await memberCheckboxes.nth(1).click();
-    } else {
-      // Try clickable member list items (not tab/action buttons)
-      const memberItems = dialog.locator('[role="option"], [role="listitem"]');
-      const itemCount = await memberItems.count();
-      if (itemCount >= 2) {
-        await memberItems.nth(0).click();
-        await memberItems.nth(1).click();
-      }
-    }
+    // Select concrete member rows used by the Talk dialog implementation.
+    await dialog.getByRole("button", { name: /Rohan Mehra/i }).click();
+    await dialog.getByRole("button", { name: /Priya Kapoor/i }).click();
     await page.waitForTimeout(300);
 
     const createBtn = dialog.getByRole("button", { name: /Create group/i });
-    // Force-click even if disabled — the NC adapter may not enable it properly
-    await createBtn.click({ force: true });
+    await expect(createBtn).toBeEnabled({ timeout: 5000 });
+    await createBtn.click();
     await page.waitForTimeout(1500);
     // Verify dialog closed or group appeared
     const dialogGone = await dialog.isHidden({ timeout: 5000 }).catch(() => false);
@@ -110,8 +98,47 @@ test.describe("Talk / Chat", () => {
     expect(dialogGone || groupVisible).toBeTruthy();
   });
 
+  test("Cross-user connecting flow works (call, video accept, screen share)", async ({ browser }) => {
+    test.setTimeout(90_000);
+    const contextA = await browser.newContext({ storageState: "playwright/.auth/session.json" });
+    const pageA = await contextA.newPage();
+    await login(pageA);
+    await navigateTo(pageA, "/talk");
+    const convoA = pageA.getByRole("button", { name: /Priya Kapoor|Rohan Mehra|Arjun Singh/i }).first();
+    await expect(convoA).toBeVisible({ timeout: 10000 });
+    await convoA.click();
+
+    const contextB = await browser.newContext();
+    const pageB = await contextB.newPage();
+    await pageB.request.post("/api/auth/login", {
+      data: { email: "cloudqa2", password: "CloudQA2!2026" },
+    });
+    await pageB.goto("/#/talk");
+    await pageB.waitForLoadState("networkidle");
+    const convoB = pageB.getByRole("button", { name: /Priya Kapoor|Rohan Mehra|Arjun Singh/i }).first();
+    await expect(convoB).toBeVisible({ timeout: 10000 });
+    await convoB.click();
+
+    const callBtnA = pageA.locator("button").filter({ has: pageA.locator("svg.lucide-monitor-up") }).first();
+    await expect(callBtnA).toBeVisible({ timeout: 10000 });
+    await callBtnA.click();
+    const acceptBtnB = pageB.getByRole("button", { name: /Accept/i });
+    await expect(acceptBtnB).toBeVisible({ timeout: 10000 });
+    await acceptBtnB.click();
+
+    const callOverlayA = pageA.locator(".fixed.inset-0.z-50");
+    const callOverlayB = pageB.locator(".fixed.inset-0.z-50");
+    await expect(callOverlayA).toBeVisible({ timeout: 10000 });
+    await expect(callOverlayB).toBeVisible({ timeout: 10000 });
+
+    await expect(pageB.locator("text=/sharing their screen|You are sharing your screen/i").first()).toBeVisible({ timeout: 10000 });
+
+    await contextA.close();
+    await contextB.close();
+  });
+
   test("Voice call UI", async ({ page }) => {
-    const convoItem = page.locator("button.cursor-pointer, [class*='conversation'], aside button").first();
+    const convoItem = page.getByRole("button", { name: /Priya Kapoor|Rohan Mehra|Arjun Singh/i }).first();
     await expect(convoItem).toBeVisible({ timeout: 10000 });
     await convoItem.click();
     await page.waitForLoadState("networkidle");
@@ -128,7 +155,7 @@ test.describe("Talk / Chat", () => {
   });
 
   test("Incoming call simulation", async ({ page }) => {
-    const convoItem = page.locator("button.cursor-pointer, [class*='conversation'], aside button").first();
+    const convoItem = page.getByRole("button", { name: /Priya Kapoor|Rohan Mehra|Arjun Singh/i }).first();
     await expect(convoItem).toBeVisible({ timeout: 10000 });
     await convoItem.click();
     await page.waitForLoadState("networkidle");

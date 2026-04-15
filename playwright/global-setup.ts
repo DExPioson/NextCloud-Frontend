@@ -16,10 +16,10 @@ async function globalSetup(_config: FullConfig) {
   const page = await context.newPage();
 
   // POST login to get session cookie
-  const response = await page.request.post("http://localhost:5000/api/auth/login", {
+  const response = await page.request.post("http://localhost:5001/api/auth/login", {
     data: {
-      email: "piyush@cloudspace.home",
-      password: "cloudspace123",
+      email: "cloudqa1",
+      password: "CloudQA1!2026",
     },
   });
 

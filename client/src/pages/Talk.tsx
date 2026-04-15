@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, isToday, isYesterday } from "date-fns";
 import {
@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import type { Conversation, Message } from "@shared/schema";
 
-// ─── Helpers ────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function formatMessageTime(dateStr: string) {
   return format(new Date(dateStr), "h:mm a");
@@ -51,14 +51,15 @@ function formatCallDuration(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-const EMOJI_LIST = ["😀","😂","👍","❤️","🎉","🔥","👀","🙏","💯","✅","🚀","😎","🤔","💡","📌","✨","🎯","📊","🏆","👏"];
+const EMOJI_LIST = ["ðŸ˜€","ðŸ˜‚","ðŸ‘","â¤ï¸","ðŸŽ‰","ðŸ”¥","ðŸ‘€","ðŸ™","ðŸ’¯","âœ…","ðŸš€","ðŸ˜Ž","ðŸ¤”","ðŸ’¡","ðŸ“Œ","âœ¨","ðŸŽ¯","ðŸ“Š","ðŸ†","ðŸ‘"];
 
 const SEEDED_CONTACTS = [
   "Rohan Mehra", "Priya Kapoor", "Arjun Singh", "Neha Joshi", "Vikram Patel",
   "Anjali Gupta", "Rahul Verma", "Kavita Reddy", "Deepak Malhotra", "Sneha Iyer",
+  "QA Alex", "QA Bella", "QA Chris", "QA Diana", "QA Ethan",
 ];
 
-// ─── Toast system ──────────────────────────────────────────
+// â”€â”€â”€ Toast system â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function useToast() {
   const [toast, setToast] = useState<{ message: string; action?: React.ReactNode } | null>(null);
@@ -83,7 +84,7 @@ function ToastOverlay({ toast, onDismiss }: { toast: { message: string; action?:
   );
 }
 
-// ─── Mock members data ──────────────────────────────────────
+// â”€â”€â”€ Mock members data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MOCK_MEMBERS: Record<string, { name: string; email: string }[]> = {
   "Product Team": [
@@ -105,7 +106,7 @@ const MOCK_SHARED_FILES = [
   { name: "Team Photo.jpg", size: "3.4 MB", icon: Image },
 ];
 
-// ─── Types ──────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type CallState = {
   active: boolean;
@@ -121,7 +122,28 @@ type CallState = {
   duration: number;
 };
 
-// ─── Components ─────────────────────────────────────────────
+type ConversationCallSignal = {
+  conversationId: number;
+  type: "voice" | "video" | "screen";
+  initiatorName: string;
+  active: boolean;
+  acceptedBy: string[];
+  declinedBy: string[];
+  isScreenSharing: boolean;
+  startedAt: string;
+  updatedAt: string;
+  offer?: RTCSessionDescriptionInit;
+  offerFrom?: string;
+  answer?: RTCSessionDescriptionInit;
+  answerFrom?: string;
+  iceCandidates?: Array<{
+    id: string;
+    from: string;
+    candidate: RTCIceCandidateInit;
+  }>;
+};
+
+// â”€â”€â”€ Components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function Avatar({ name, size = 38, isGroup = false }: { name: string; size?: number; isGroup?: boolean }) {
   const colorClass = getAvatarColor(name);
@@ -144,7 +166,7 @@ function OnlineDot({ size = 8, className }: { size?: number; className?: string 
   );
 }
 
-// ─── Conversation List Item ─────────────────────────────────
+// â”€â”€â”€ Conversation List Item â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ConversationRow({
   conversation: c,
@@ -196,7 +218,7 @@ function ConversationRow({
   );
 }
 
-// ─── Date Separator ─────────────────────────────────────────
+// â”€â”€â”€ Date Separator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function DateSeparator({ date }: { date: string }) {
   return (
@@ -208,7 +230,7 @@ function DateSeparator({ date }: { date: string }) {
   );
 }
 
-// ─── Message Bubble ─────────────────────────────────────────
+// â”€â”€â”€ Message Bubble â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function MessageBubble({
   message: m,
@@ -231,7 +253,7 @@ function MessageBubble({
             {m.content}
           </div>
           <span className="text-[11px] text-muted-foreground mt-1 mr-1 text-right block">
-            {formatMessageTime(m.sentAt)} · ✓✓
+            {formatMessageTime(m.sentAt)} Â· âœ“âœ“
           </span>
           {reactions && (
             <div className="flex gap-1 mt-1 justify-end">
@@ -276,7 +298,7 @@ function MessageBubble({
   );
 }
 
-// ─── Typing Indicator ───────────────────────────────────────
+// â”€â”€â”€ Typing Indicator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TypingIndicator({ name }: { name: string }) {
   return (
@@ -295,7 +317,7 @@ function TypingIndicator({ name }: { name: string }) {
   );
 }
 
-// ─── Voice Call Overlay ─────────────────────────────────────
+// â”€â”€â”€ Voice Call Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function VoiceCallOverlay({ callState, onUpdate, onEnd }: {
   callState: CallState;
@@ -384,12 +406,18 @@ function VoiceCallOverlay({ callState, onUpdate, onEnd }: {
   );
 }
 
-// ─── Video Call Overlay ─────────────────────────────────────
+// â”€â”€â”€ Video Call Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function VideoCallOverlay({ callState, onUpdate, onEnd }: {
+function VideoCallOverlay({ callState, onUpdate, onEnd, currentUserName }: {
   callState: CallState;
   onUpdate: (partial: Partial<CallState>) => void;
   onEnd: () => void;
+  currentUserName: string;
+  remoteVideoRef: React.RefObject<HTMLVideoElement | null>;
+  localVideoRef: React.RefObject<HTMLVideoElement | null>;
+  remoteVideoEnabled: boolean;
+  localVideoEnabled: boolean;
+  remoteParticipantName: string;
 }) {
   const isDm = callState.participants.length <= 2;
 
@@ -406,16 +434,14 @@ function VideoCallOverlay({ callState, onUpdate, onEnd }: {
           /* Screen share layout */
           <div className="h-full flex flex-col gap-3">
             <div className="flex-1 rounded-xl bg-gray-800 flex flex-col items-center justify-center">
-              <MonitorUp size={64} className="text-white/30 mb-3" />
-              <p className="text-white font-medium">You are sharing your screen</p>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="mt-3"
-                onClick={() => onUpdate({ isScreenSharing: false })}
-              >
-                Stop sharing
-              </Button>
+              {remoteVideoEnabled ? (
+                <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full rounded-xl object-cover" />
+              ) : (
+                <>
+                  <MonitorUp size={64} className="text-white/30 mb-3" />
+                  <p className="text-white font-medium">{remoteParticipantName} is sharing their screen</p>
+                </>
+              )}
             </div>
             <div className="flex gap-2 justify-center">
               {callState.participants.map((p) => (
@@ -439,20 +465,26 @@ function VideoCallOverlay({ callState, onUpdate, onEnd }: {
               "h-full rounded-xl bg-gray-800 flex items-center justify-center relative overflow-hidden",
               callState.participants[0]?.isSpeaking && "ring-2 ring-green-400"
             )}>
-              <Avatar name={callState.participants[0]?.name || callState.conversationName} size={64} />
+              {remoteVideoEnabled ? (
+                <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+              ) : (
+                <Avatar name={callState.participants[0]?.name || callState.conversationName} size={64} />
+              )}
               <span className="absolute bottom-3 left-3 text-white text-xs font-medium bg-black/40 px-2 py-0.5 rounded">
                 {callState.participants[0]?.name || callState.conversationName}
               </span>
             </div>
             {/* Self PIP */}
             <div className="absolute bottom-4 right-4 w-[240px] h-[135px] rounded-xl bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-700">
-              {callState.isVideoOff ? (
+              {!callState.isVideoOff && localVideoEnabled ? (
+                <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+              ) : callState.isVideoOff ? (
                 <div className="flex flex-col items-center gap-1">
-                  <Avatar name="Piyush Sharma" size={48} />
+                  <Avatar name={currentUserName} size={48} />
                   <span className="text-[10px] text-white/60">Camera off</span>
                 </div>
               ) : (
-                <Avatar name="Piyush Sharma" size={48} />
+                <Avatar name={currentUserName} size={48} />
               )}
               <span className="absolute bottom-2 left-2 text-[10px] text-white bg-black/40 px-1.5 py-0.5 rounded">You</span>
             </div>
@@ -470,7 +502,7 @@ function VideoCallOverlay({ callState, onUpdate, onEnd }: {
               >
                 <Avatar name={p.name} size={64} />
                 <span className="absolute bottom-2 left-2 text-white text-xs font-medium bg-black/40 px-2 py-0.5 rounded">
-                  {p.name}{p.name === "Piyush Sharma" ? " (You)" : ""}
+                  {p.name}{p.name === currentUserName ? " (You)" : ""}
                 </span>
               </div>
             ))}
@@ -529,7 +561,7 @@ function VideoCallOverlay({ callState, onUpdate, onEnd }: {
   );
 }
 
-// ─── Incoming Call Notification ─────────────────────────────
+// â”€â”€â”€ Incoming Call Notification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function IncomingCallBanner({ callerName, onAccept, onDecline }: {
   callerName: string;
@@ -562,7 +594,7 @@ function IncomingCallBanner({ callerName, onAccept, onDecline }: {
   );
 }
 
-// ─── Info Panel ─────────────────────────────────────────────
+// â”€â”€â”€ Info Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function InfoPanel({
   conversation,
@@ -571,6 +603,8 @@ function InfoPanel({
   onDeleteGroup,
   onTransferAdmin,
   showToast,
+  currentUserName,
+  currentUserId,
 }: {
   conversation: Conversation;
   onMuteToggle: () => void;
@@ -578,10 +612,16 @@ function InfoPanel({
   onDeleteGroup: () => void;
   onTransferAdmin: (memberId: number, memberName: string) => void;
   showToast: (msg: string) => void;
+  currentUserName: string;
+  currentUserId: number;
 }) {
   const isDm = conversation.type === "dm";
-  const members = MOCK_MEMBERS[conversation.name] || [];
-  const isAdmin = conversation.adminId === 1;
+  const members = (MOCK_MEMBERS[conversation.name] || []).map((member) =>
+    member.name === "Piyush Sharma"
+      ? { ...member, name: currentUserName, email: `${currentUserName.toLowerCase().replace(/\s+/g, ".")}@cloudspace.home` }
+      : member,
+  );
+  const isAdmin = conversation.adminId === currentUserId;
 
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -589,7 +629,7 @@ function InfoPanel({
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [selectedTransferMember, setSelectedTransferMember] = useState<{ id: number; name: string } | null>(null);
 
-  const otherMembers = members.filter((m) => m.name !== "Piyush Sharma");
+  const otherMembers = members.filter((m) => m.name !== currentUserName);
 
   return (
     <div className="w-[260px] flex-shrink-0 border-l flex flex-col overflow-hidden bg-background">
@@ -650,17 +690,14 @@ function InfoPanel({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium truncate">{member.name}</p>
-                      {member.name === "Piyush Sharma" && (
+                      {member.name === currentUserName && (
                         <span className="text-[11px] text-muted-foreground">(you)</span>
                       )}
-                      {/* Admin badge: adminId=1 → Piyush, adminId=N → SEEDED_CONTACTS[N-2] */}
+                      {/* Admin badge */}
                       {(() => {
                         const aid = conversation.adminId;
                         if (!aid) return null;
-                        if (aid === 1 && member.name === "Piyush Sharma") {
-                          return <Badge variant="secondary" className="text-[10px] px-1.5">Admin</Badge>;
-                        }
-                        if (aid >= 2 && SEEDED_CONTACTS[aid - 2] === member.name) {
+                        if (aid === currentUserId && member.name === currentUserName) {
                           return <Badge variant="secondary" className="text-[10px] px-1.5">Admin</Badge>;
                         }
                         return null;
@@ -749,7 +786,10 @@ function InfoPanel({
           </p>
           <div className="space-y-1">
             {otherMembers.map((m) => {
-              const memberId = SEEDED_CONTACTS.indexOf(m.name) + 2; // +2 because Piyush=1
+              const memberId = Math.max(
+                2,
+                Array.from(m.name).reduce((acc, ch) => acc + ch.charCodeAt(0), 0),
+              );
               const isSelected = selectedTransferMember?.name === m.name;
               return (
                 <button
@@ -812,7 +852,7 @@ function InfoPanel({
   );
 }
 
-// ─── Main Talk Page ─────────────────────────────────────────
+// â”€â”€â”€ Main Talk Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function Talk() {
   const queryClient = useQueryClient();
@@ -833,10 +873,24 @@ export default function Talk() {
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
   const [newDmSearch, setNewDmSearch] = useState("");
+  const [remoteVideoEnabled, setRemoteVideoEnabled] = useState(false);
+  const [localVideoEnabled, setLocalVideoEnabled] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const incomingCallTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const isCallInitiatorRef = useRef(false);
+  const isMediaReadyRef = useRef(false);
+  const sentOfferRef = useRef(false);
+  const sentAnswerRef = useRef(false);
+  const processedCandidateIdsRef = useRef<Set<string>>(new Set());
+  const sawActiveSignalRef = useRef<Set<number>>(new Set());
 
   // Queries
   const { data: conversationsData } = useQuery({
@@ -849,6 +903,15 @@ export default function Talk() {
 
   const conversations = conversationsData?.data || [];
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const { data: currentUserData } = useQuery({
+    queryKey: ["/api/user"],
+    queryFn: async () => {
+      const res = await fetch("/api/user");
+      return res.json() as Promise<{ data: { id?: number; name?: string } }>;
+    },
+  });
+  const currentUserId = currentUserData?.data?.id || 0;
+  const currentUserName = currentUserData?.data?.name || "You";
 
   const { data: messagesData } = useQuery({
     queryKey: ["/api/conversations/messages", activeConversationId],
@@ -860,6 +923,17 @@ export default function Talk() {
   });
 
   const messagesList = messagesData?.data || [];
+
+  const { data: callSignalData } = useQuery({
+    queryKey: ["/api/conversations/call", activeConversationId],
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${activeConversationId}/call`);
+      return res.json() as Promise<{ data: ConversationCallSignal | null }>;
+    },
+    enabled: !!activeConversationId,
+    refetchInterval: 1500,
+  });
+  const callSignal = callSignalData?.data;
 
   // Set first conversation as active on load
   useEffect(() => {
@@ -905,20 +979,231 @@ export default function Talk() {
     return () => { if (incomingCallTimeoutRef.current) clearTimeout(incomingCallTimeoutRef.current); };
   }, [incomingCall]);
 
+  useEffect(() => {
+    if (!remoteAudioRef.current) return;
+    if (!callState?.active) return;
+    remoteAudioRef.current.muted = !callState.isSpeakerOn;
+    remoteAudioRef.current.volume = callState.isSpeakerOn ? 1 : 0;
+  }, [callState?.active, callState?.isSpeakerOn]);
+
+  useEffect(() => {
+    return () => {
+      stopMediaAndPeer();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+
+    if (callSignal?.active && callSignal.initiatorName !== currentUserName && !callState?.active) {
+      sawActiveSignalRef.current.add(activeConversationId);
+      setIncomingCall(callSignal.initiatorName);
+      return;
+    }
+
+    if (
+      callSignal?.active &&
+      callState?.active &&
+      callState.conversationId === activeConversationId &&
+      callState.isScreenSharing !== callSignal.isScreenSharing
+    ) {
+      setCallState((prev) => (prev ? { ...prev, isScreenSharing: callSignal.isScreenSharing } : null));
+    }
+
+    if (callSignal?.active) {
+      sawActiveSignalRef.current.add(activeConversationId);
+    }
+
+    const hasResolvedCallSignal = typeof callSignalData !== "undefined";
+    if (
+      hasResolvedCallSignal &&
+      sawActiveSignalRef.current.has(activeConversationId) &&
+      !callSignal?.active &&
+      callState?.active &&
+      callState.conversationId === activeConversationId
+    ) {
+      showToast("Call ended");
+      stopMediaAndPeer();
+      setCallState(null);
+      setIncomingCall(null);
+      sawActiveSignalRef.current.delete(activeConversationId);
+    }
+  }, [activeConversationId, callSignal, callSignalData, callState, currentUserName, showToast]);
+
+  useEffect(() => {
+    if (!activeConversationId || !callSignal?.active || !callState?.active) return;
+    if (callState.conversationId !== activeConversationId) return;
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    const syncSignal = async () => {
+      if (!isCallInitiatorRef.current && callSignal.offer && !sentAnswerRef.current) {
+        if (!pc.currentRemoteDescription) {
+          await pc.setRemoteDescription(new RTCSessionDescription(callSignal.offer));
+        }
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await apiRequest("PATCH", `/api/conversations/${activeConversationId}/call`, {
+          answer,
+          answerFrom: currentUserName,
+        });
+        sentAnswerRef.current = true;
+      }
+
+      if (isCallInitiatorRef.current && callSignal.answer && !pc.currentRemoteDescription) {
+        await pc.setRemoteDescription(new RTCSessionDescription(callSignal.answer));
+      }
+
+      const candidates = callSignal.iceCandidates || [];
+      for (const candidateItem of candidates) {
+        if (candidateItem.from === currentUserName) continue;
+        if (processedCandidateIdsRef.current.has(candidateItem.id)) continue;
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidateItem.candidate));
+          processedCandidateIdsRef.current.add(candidateItem.id);
+        } catch (_err) {
+          // Candidate may arrive before remote description; ignore and retry on next poll.
+        }
+      }
+    };
+
+    void syncSignal().catch(() => undefined);
+  }, [activeConversationId, callSignal, callState?.active, callState?.conversationId, currentUserName]);
+
   // Build participants from conversation
   function buildParticipants(conv: Conversation) {
     const memberNames: string[] = conv.members ? JSON.parse(conv.members) : [];
     if (conv.type === "dm") {
       return [
         { id: 2, name: conv.name, isSpeaking: false },
-        { id: 1, name: "Piyush Sharma", isSpeaking: false },
+        { id: 1, name: currentUserName, isSpeaking: false },
       ];
     }
-    return memberNames.map((name, i) => ({ id: i + 1, name, isSpeaking: false }));
+    const withSelf = memberNames.includes(currentUserName) ? memberNames : [currentUserName, ...memberNames];
+    return withSelf.map((name, i) => ({ id: i + 1, name, isSpeaking: false }));
   }
 
-  function startCall(type: "voice" | "video" | "screen") {
+  function stopMediaAndPeer() {
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.onicecandidate = null;
+      peerConnectionRef.current.ontrack = null;
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    remoteStreamRef.current = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    setRemoteVideoEnabled(false);
+    setLocalVideoEnabled(false);
+    sentOfferRef.current = false;
+    sentAnswerRef.current = false;
+    isMediaReadyRef.current = false;
+    processedCandidateIdsRef.current.clear();
+  }
+
+  async function getLocalMedia(type: "voice" | "video" | "screen") {
+    if (!(navigator?.mediaDevices?.getUserMedia)) {
+      throw new Error("Media devices are unavailable in this browser.");
+    }
+    if (type === "screen") {
+      if (!navigator.mediaDevices.getDisplayMedia) {
+        throw new Error("Screen share is unavailable in this browser.");
+      }
+      return navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    }
+    if (type === "video") {
+      return navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  }
+
+  function ensurePeerConnection(conversationId: number) {
+    if (peerConnectionRef.current) return peerConnectionRef.current;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+
+    pc.onicecandidate = async (event) => {
+      if (!event.candidate) return;
+      await apiRequest("PATCH", `/api/conversations/${conversationId}/call`, {
+        iceCandidate: event.candidate.toJSON(),
+        iceFrom: currentUserName,
+      }).catch(() => undefined);
+    };
+
+    pc.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+      if (!remoteStream) return;
+      remoteStreamRef.current = remoteStream;
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        void remoteAudioRef.current.play().catch(() => undefined);
+      }
+      const hasVideo = remoteStream.getVideoTracks().length > 0;
+      setRemoteVideoEnabled(hasVideo);
+      if (hasVideo && remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        void remoteVideoRef.current.play().catch(() => undefined);
+      }
+    };
+
+    peerConnectionRef.current = pc;
+    return pc;
+  }
+
+  async function ensureMediaAndTracks(type: "voice" | "video" | "screen", conversationId: number) {
+    const pc = ensurePeerConnection(conversationId);
+    if (isMediaReadyRef.current) return pc;
+    const stream = await getLocalMedia(type);
+    localStreamRef.current = stream;
+    const hasLocalVideo = stream.getVideoTracks().length > 0;
+    setLocalVideoEnabled(hasLocalVideo);
+    if (hasLocalVideo && localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+      void localVideoRef.current.play().catch(() => undefined);
+    }
+    stream.getTracks().forEach((track) => {
+      pc.addTrack(track, stream);
+    });
+    isMediaReadyRef.current = true;
+    return pc;
+  }
+
+  async function startCall(type: "voice" | "video" | "screen") {
     if (!activeConversation) return;
+    stopMediaAndPeer();
+    let mediaReady = true;
+    try {
+      await ensureMediaAndTracks(type, activeConversation.id);
+    } catch (_error) {
+      mediaReady = false;
+      showToast("Media permissions unavailable. Running in signaling-only mode.");
+    }
+
+    await apiRequest("POST", `/api/conversations/${activeConversation.id}/call/start`, {
+      type,
+      initiatorName: currentUserName,
+    }).catch(() => undefined);
+
+    isCallInitiatorRef.current = true;
+    if (mediaReady) {
+      const pc = ensurePeerConnection(activeConversation.id);
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: type !== "voice",
+      });
+      await pc.setLocalDescription(offer);
+      await apiRequest("PATCH", `/api/conversations/${activeConversation.id}/call`, {
+        offer,
+        offerFrom: currentUserName,
+      }).catch(() => undefined);
+      sentOfferRef.current = true;
+    }
+
     setCallState({
       active: true,
       type,
@@ -935,15 +1220,86 @@ export default function Talk() {
     setIncomingCall(null);
   }
 
-  function endCall() {
+  async function endCall() {
     if (callState) {
+      await apiRequest("POST", `/api/conversations/${callState.conversationId}/call/end`, {
+        endedBy: currentUserName,
+      }).catch(() => undefined);
       showToast(`Call ended · ${formatCallDuration(callState.duration)}`);
+      sawActiveSignalRef.current.delete(callState.conversationId);
     }
+    stopMediaAndPeer();
     setCallState(null);
   }
 
   function updateCall(partial: Partial<CallState>) {
-    setCallState((prev) => prev ? { ...prev, ...partial } : null);
+    setCallState((prev) => {
+      if (!prev) return null;
+      if (typeof partial.isMuted === "boolean") {
+        localStreamRef.current?.getAudioTracks().forEach((track) => {
+          track.enabled = !partial.isMuted;
+        });
+      }
+      if (typeof partial.isVideoOff === "boolean") {
+        localStreamRef.current?.getVideoTracks().forEach((track) => {
+          track.enabled = !partial.isVideoOff;
+        });
+      }
+      if (typeof partial.isScreenSharing === "boolean") {
+        apiRequest("PATCH", `/api/conversations/${prev.conversationId}/call`, {
+          isScreenSharing: partial.isScreenSharing,
+        }).catch(() => undefined);
+      }
+      return { ...prev, ...partial };
+    });
+  }
+
+  async function acceptIncomingCall() {
+    if (!activeConversationId || !callSignal) return;
+    let mediaReady = true;
+    try {
+      await ensureMediaAndTracks(callSignal.type, activeConversationId);
+    } catch (_error) {
+      mediaReady = false;
+      showToast("Media permissions unavailable. Running in signaling-only mode.");
+    }
+    await apiRequest("POST", `/api/conversations/${activeConversationId}/call/accept`, {
+      userName: currentUserName,
+    }).catch(() => undefined);
+    isCallInitiatorRef.current = false;
+    sentOfferRef.current = false;
+    sentAnswerRef.current = false;
+    if (!mediaReady) {
+      stopMediaAndPeer();
+    }
+
+    const conversation = activeConversation || conversations.find((c) => c.id === activeConversationId);
+    if (!conversation) return;
+
+    setCallState({
+      active: true,
+      type: callSignal.type,
+      conversationId: conversation.id,
+      conversationName: conversation.name,
+      startedAt: new Date(callSignal.startedAt),
+      isMuted: false,
+      isVideoOff: callSignal.type === "voice",
+      isSpeakerOn: true,
+      isScreenSharing: callSignal.isScreenSharing,
+      participants: buildParticipants(conversation),
+      duration: 0,
+    });
+    setIncomingCall(null);
+  }
+
+  async function declineIncomingCall() {
+    if (activeConversationId) {
+      await apiRequest("POST", `/api/conversations/${activeConversationId}/call/decline`, {
+        userName: currentUserName,
+      }).catch(() => undefined);
+    }
+    stopMediaAndPeer();
+    setIncomingCall(null);
   }
 
   // Send message mutation
@@ -1036,8 +1392,8 @@ export default function Talk() {
     const optimisticMsg: Message = {
       id: Date.now(),
       conversationId: activeConversationId,
-      senderId: 1,
-      senderName: "Piyush Sharma",
+      senderId: currentUserId,
+      senderName: currentUserName,
       content,
       sentAt: new Date().toISOString(),
       reactions: null,
@@ -1053,7 +1409,7 @@ export default function Talk() {
     setComposerContent("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     sendMutation.mutate(content);
-  }, [composerContent, activeConversationId, sendMutation, queryClient]);
+  }, [composerContent, activeConversationId, currentUserId, currentUserName, sendMutation, queryClient]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1111,12 +1467,12 @@ export default function Talk() {
 
   const handleCreateGroup = () => {
     if (!newGroupName.trim() || newGroupMembers.length === 0) return;
-    const allMembers = ["Piyush Sharma", ...newGroupMembers];
+    const allMembers = [currentUserName, ...newGroupMembers];
     createConversationMutation.mutate({
       name: newGroupName,
       type: "group",
-      adminId: 1,
-      createdBy: 1,
+      adminId: currentUserId,
+      createdBy: currentUserId,
       members: JSON.stringify(allMembers),
     });
     setNewChatOpen(false);
@@ -1134,7 +1490,7 @@ export default function Talk() {
       createConversationMutation.mutate({
         name: contactName,
         type: "dm",
-        members: JSON.stringify(["Piyush Sharma", contactName]),
+        members: JSON.stringify([currentUserName, contactName]),
       });
     }
     setSearchQuery("");
@@ -1167,7 +1523,7 @@ export default function Talk() {
     ? groupConversations.filter((c) => c.name.toLowerCase().includes(query) || (c.lastMessage || "").toLowerCase().includes(query))
     : groupConversations;
 
-  // People search — contacts not already in conversations
+  // People search â€” contacts not already in conversations
   const peopleResults = query
     ? SEEDED_CONTACTS.filter((name) => {
         if (!name.toLowerCase().includes(query)) return false;
@@ -1177,6 +1533,10 @@ export default function Talk() {
     : [];
 
   const noResults = query && filteredDm.length === 0 && filteredGroups.length === 0 && peopleResults.length === 0;
+  const remoteParticipantName = callState?.participants.find((p) => p.name !== currentUserName)?.name
+    || callSignal?.initiatorName
+    || activeConversation?.name
+    || "Other participant";
 
   return (
     <>
@@ -1187,20 +1547,32 @@ export default function Talk() {
         <VoiceCallOverlay callState={callState} onUpdate={updateCall} onEnd={endCall} />
       )}
       {callState?.active && (callState.type === "video" || callState.type === "screen") && (
-        <VideoCallOverlay callState={callState} onUpdate={updateCall} onEnd={endCall} />
-      )}
-
-      {/* Incoming call notification */}
-      {incomingCall && (
-        <IncomingCallBanner
-          callerName={incomingCall}
-          onAccept={() => { setIncomingCall(null); startCall("video"); }}
-          onDecline={() => setIncomingCall(null)}
+        <VideoCallOverlay
+          callState={callState}
+          onUpdate={updateCall}
+          onEnd={endCall}
+          currentUserName={currentUserName}
+          remoteVideoRef={remoteVideoRef}
+          localVideoRef={localVideoRef}
+          remoteVideoEnabled={remoteVideoEnabled}
+          localVideoEnabled={localVideoEnabled}
+          remoteParticipantName={remoteParticipantName}
         />
       )}
 
+      {/* Incoming call notification */}
+        {incomingCall && (
+          <IncomingCallBanner
+            callerName={incomingCall}
+            onAccept={acceptIncomingCall}
+            onDecline={declineIncomingCall}
+          />
+        )}
+
+      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
       <div className="flex h-[calc(100vh-var(--topbar-height,56px))] overflow-hidden">
-        {/* ─── Panel 1: Conversation List ─── */}
+        {/* â”€â”€â”€ Panel 1: Conversation List â”€â”€â”€ */}
         <div className="w-[280px] flex-shrink-0 border-r flex flex-col bg-background">
           {/* Header */}
           <div className="p-3 flex items-center gap-2">
@@ -1293,7 +1665,7 @@ export default function Talk() {
           </Tabs>
         </div>
 
-        {/* ─── Panel 2: Chat Area ─── */}
+        {/* â”€â”€â”€ Panel 2: Chat Area â”€â”€â”€ */}
         {activeConversation ? (
           <div className="flex-1 flex flex-col min-w-0">
             {/* Chat TopBar */}
@@ -1426,7 +1798,7 @@ export default function Talk() {
             {callState?.isScreenSharing && (
               <div className="bg-green-50 dark:bg-green-950/30 border-b border-green-200 dark:border-green-800 px-4 py-2 flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
                 <MonitorUp size={14} />
-                Piyush Sharma is sharing their screen
+                {currentUserName} is sharing their screen
                 <Button variant="ghost" size="sm" className="ml-auto text-green-700 dark:text-green-400">View</Button>
               </div>
             )}
@@ -1444,7 +1816,9 @@ export default function Talk() {
                 <div key={group.date}>
                   <DateSeparator date={group.messages[0].sentAt} />
                   {group.messages.map((msg, mi) => {
-                    const isSent = msg.senderId === 1;
+                    const isSent = currentUserId > 0
+                      ? msg.senderId === currentUserId
+                      : msg.senderName === currentUserName;
                     const prevMsg = mi > 0 ? group.messages[mi - 1] : gi > 0 ? groupedMessages[gi - 1].messages.at(-1) : undefined;
                     const isConsecutive = prevMsg
                       && prevMsg.senderId === msg.senderId
@@ -1549,7 +1923,7 @@ export default function Talk() {
           </div>
         )}
 
-        {/* ─── Panel 3: Info Panel ─── */}
+        {/* â”€â”€â”€ Panel 3: Info Panel â”€â”€â”€ */}
         {showInfoPanel && activeConversation && (
           <InfoPanel
             conversation={activeConversation}
@@ -1558,6 +1932,8 @@ export default function Talk() {
             onDeleteGroup={handleDeleteGroup}
             onTransferAdmin={handleTransferAdmin}
             showToast={showToast}
+            currentUserName={currentUserName}
+            currentUserId={currentUserId}
           />
         )}
       </div>
@@ -1629,7 +2005,7 @@ export default function Talk() {
                         "h-4 w-4 rounded border flex items-center justify-center",
                         isSelected ? "bg-primary border-primary" : "border-muted-foreground"
                       )}>
-                        {isSelected && <span className="text-white text-[10px]">✓</span>}
+                        {isSelected && <span className="text-white text-[10px]">âœ“</span>}
                       </div>
                       <Avatar name={name} size={32} />
                       <span className="text-sm font-medium">{name}</span>
@@ -1664,3 +2040,6 @@ export default function Talk() {
     </>
   );
 }
+
+
+
